@@ -145,14 +145,23 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	}
 
 	config := &runner.Config{
-		Command:    targetCommand,
-		Args:       targetArgs,
-		InputFile:  inputFile,
-		OutputFile: actualOutputFile,
-		StderrFile: actualStderrFile,
-		Verbose:    runFlags.Verbose,
-		DryRun:     runFlags.DryRun,
-		Timeout:    runFlags.Timeout,
+		Command:        targetCommand,
+		Args:           targetArgs,
+		InputFile:      inputFile,
+		OutputFile:     actualOutputFile,
+		StderrFile:     actualStderrFile,
+		Verbose:        runFlags.Verbose,
+		DryRun:         runFlags.DryRun,
+		Timeout:        runFlags.Timeout,
+		Sandbox:        runFlags.Sandbox,
+		Exec:           runFlags.Exec,
+		SandboxWorkDir: runFlags.SandboxWorkDir,
+	}
+
+	// In exec mode, replace the current process entirely.
+	// No JSON output, webhooks, or uploads — the process is replaced.
+	if config.Exec {
+		return runner.ExecuteExec(config)
 	}
 
 	result, err := runner.Execute(config)
@@ -211,6 +220,23 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	return helpers.OutputJSONAndWebhook(jsonResult, runFlags.Verbose, runFlags.DryRun)
 }
 
+// validateExecFlags checks that --exec is not combined with incompatible flags.
+func validateExecFlags() error {
+	if !runFlags.Exec {
+		return nil
+	}
+	if runWebhookConfig.URL != "" {
+		return fmt.Errorf("--exec is incompatible with --webhook-url (process is replaced via execve)")
+	}
+	if runUploadConfig.Provider != "" {
+		return fmt.Errorf("--exec is incompatible with --upload-provider (process is replaced via execve)")
+	}
+	if runFlags.DryRun {
+		return fmt.Errorf("--exec is incompatible with --dry-run (process is replaced via execve)")
+	}
+	return nil
+}
+
 func init() {
 	// Command-specific flags
 	runCmd.Flags().StringVarP(&inputFile, "input", "i", "", "Input file to redirect to command's stdin (required)")
@@ -236,6 +262,19 @@ func init() {
 		runFlags.Timeout, err = helpers.ParseTimeout(runFlags.TimeoutStr)
 		if err != nil {
 			return err
+		}
+
+		// Validate --exec incompatibilities
+		if err := validateExecFlags(); err != nil {
+			return err
+		}
+
+		// Default sandbox-workdir to current working directory
+		if runFlags.Sandbox && runFlags.SandboxWorkDir == "" {
+			runFlags.SandboxWorkDir, err = os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current working directory: %w", err)
+			}
 		}
 
 		// Parse webhook configuration

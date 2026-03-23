@@ -20,12 +20,15 @@ type UploadConfig struct {
 
 // CommonFlags holds commonly used flags across commands
 type CommonFlags struct {
-	Verbose    bool
-	DryRun     bool
-	TimeoutStr string
-	Timeout    time.Duration
-	Score      string
-	ScoreSet   bool
+	Verbose        bool
+	DryRun         bool
+	TimeoutStr     string
+	Timeout        time.Duration
+	Score          string
+	ScoreSet       bool
+	Sandbox        bool
+	Exec           bool
+	SandboxWorkDir string
 }
 
 // WebhookConfig holds webhook-related flags
