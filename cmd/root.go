@@ -25,4 +25,5 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(diffCmd)
+	rootCmd.AddCommand(heartbeatCmd)
 }
