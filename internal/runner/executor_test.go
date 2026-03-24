@@ -405,3 +405,47 @@ func BenchmarkExecute(b *testing.B) {
 		}
 	}
 }
+
+func TestExecuteWithSandboxFlag(t *testing.T) {
+	// When sandbox=true in normal Execute (non-exec), the sandbox is applied
+	// before cmd.Run(). This may fail or degrade in unprivileged test envs
+	// (no CAP_SYS_ADMIN for CLONE_NEWNET), but we verify it doesn't panic.
+	tmpDir := t.TempDir()
+	inputFile := createTempFile(t, tmpDir, "input.txt", "")
+
+	config := &Config{
+		Command:        "echo",
+		Args:           []string{"sandbox-test"},
+		InputFile:      inputFile,
+		OutputFile:     filepath.Join(tmpDir, "output.txt"),
+		StderrFile:     filepath.Join(tmpDir, "stderr.txt"),
+		Sandbox:        true,
+		SandboxWorkDir: tmpDir,
+	}
+
+	// Execute may fail due to CLONE_NEWNET requiring privileges,
+	// but it must not panic.
+	_, _ = Execute(config)
+}
+
+func TestExecuteExecModeNonExistentCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	inputFile := createTempFile(t, tmpDir, "input.txt", "")
+
+	config := &Config{
+		Command:    "nonexistentcommand12345",
+		Args:       []string{},
+		InputFile:  inputFile,
+		OutputFile: filepath.Join(tmpDir, "output.txt"),
+		StderrFile: filepath.Join(tmpDir, "stderr.txt"),
+		Exec:       true,
+	}
+
+	err := ExecuteExec(config)
+	if err == nil {
+		t.Fatal("expected error for non-existent command in exec mode, got nil")
+	}
+	if !strings.Contains(err.Error(), "command not found") && !strings.Contains(err.Error(), "not supported") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}

@@ -49,6 +49,33 @@ ghost run -i /dev/null -o output.txt -e stderr.txt --score 100 -- python script.
 ghost run -i input.txt -o output.txt -e stderr.txt --timeout 30s -- ./slow-command
 ```
 
+### Sandbox Isolation
+
+Run commands with Landlock filesystem restrictions and network namespace isolation (Linux only):
+
+```bash
+# Run with sandbox — restricts filesystem access and isolates network
+ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrusted-command
+
+# Specify a custom working directory for read-write access
+ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
+
+# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
+ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
+```
+
+### Heartbeat (Container Keepalive)
+
+Run a PID 1 keepalive process that writes Unix timestamps to a file. Intended for use as a container ENTRYPOINT:
+
+```bash
+# Default: writes to /output/.heartbeat every 10s
+ghost heartbeat
+
+# Custom interval and file
+ghost heartbeat --interval 5s --file /tmp/heartbeat
+```
+
 ### Compare Files
 
 Use the diff command for structured file comparison:
@@ -118,16 +145,15 @@ Ghost outputs structured JSON to stdout:
 - 🔍 **File comparison** - Built-in diff with structured output
 - ⏳ **Timeout support** - Automatic process termination
 - 🔧 **Environment configuration** - Configure via environment variables
+- 🔒 **Sandbox isolation** - Landlock filesystem restrictions + network namespace isolation (Linux)
+- 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec`
+- 💓 **Heartbeat** - PID 1 container keepalive with timestamp file
 
 ## Documentation
 
 - 📖 **[Full Usage Guide](USAGE.md)** - Comprehensive examples and use cases
 - ⚙️ **[Configuration Reference](CONFIG.md)** - All flags and environment variables
 - 🤖 **[Developer Notes](CLAUDE.md)** - Claude Code guidance and project structure
-
-## Why "Ghost"?
-
-Like a ghost in the shell, Ghost operates transparently at the system level—observing, capturing, and reporting command execution while remaining nearly invisible to the processes it monitors.
 
 ## License
 

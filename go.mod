@@ -3,6 +3,7 @@ module github.com/zinc-sig/ghost
 go 1.24.5
 
 require (
+	github.com/landlock-lsm/go-landlock v0.7.0
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.9.1
@@ -26,6 +27,7 @@ require (
 	github.com/tinylib/msgp v1.3.0 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 )

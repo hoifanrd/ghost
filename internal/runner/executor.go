@@ -22,14 +22,17 @@ const (
 )
 
 type Config struct {
-	Command    string
-	Args       []string
-	InputFile  string
-	OutputFile string
-	StderrFile string
-	Verbose    bool
-	DryRun     bool
-	Timeout    time.Duration // 0 means no timeout
+	Command        string
+	Args           []string
+	InputFile      string
+	OutputFile     string
+	StderrFile     string
+	Verbose        bool
+	DryRun         bool
+	Timeout        time.Duration // 0 means no timeout
+	Sandbox        bool
+	Exec           bool
+	SandboxWorkDir string
 }
 
 type Result struct {
@@ -115,6 +118,13 @@ func Execute(config *Config) (*Result, error) {
 			cmd.Stderr = io.MultiWriter(stderrFile, os.Stderr)
 		} else {
 			cmd.Stderr = stderrFile
+		}
+
+		// Apply sandbox restrictions before running the command
+		if config.Sandbox {
+			if err := applySandboxToCmd(cmd, config.SandboxWorkDir); err != nil {
+				return nil, fmt.Errorf("failed to apply sandbox: %w", err)
+			}
 		}
 
 		startTime := time.Now()

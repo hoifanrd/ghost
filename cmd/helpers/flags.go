@@ -27,6 +27,9 @@ func SetupCommonFlags(cmd *cobra.Command, flags *config.CommonFlags) {
 	cmd.Flags().BoolVar(&flags.DryRun, "dry-run", false, "Show what would be executed without running commands")
 	cmd.Flags().StringVarP(&flags.TimeoutStr, "timeout", "t", "", "Timeout duration (e.g., 30s, 2m, 500ms)")
 	cmd.Flags().StringVar(&flags.Score, "score", "", "Optional score value (included in output if exit code is 0)")
+	cmd.Flags().BoolVar(&flags.Sandbox, "sandbox", false, "Apply Landlock filesystem and network namespace isolation before execution")
+	cmd.Flags().BoolVar(&flags.Exec, "exec", false, "Replace process via syscall.Exec (skips JSON output, webhooks, uploads)")
+	cmd.Flags().StringVar(&flags.SandboxWorkDir, "sandbox-workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
 }
 
 // SetupWebhookFlags adds webhook-related flags to a command
