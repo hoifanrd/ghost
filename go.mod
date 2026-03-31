@@ -1,13 +1,13 @@
 module github.com/zinc-sig/ghost
 
-go 1.25.0
+go 1.24.5
 
 require (
 	github.com/landlock-lsm/go-landlock v0.7.0
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.9.1
-	golang.org/x/sys v0.42.0
+	golang.org/x/sys v0.40.0
 )
 
 require (
