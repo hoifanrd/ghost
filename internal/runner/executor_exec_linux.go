@@ -50,6 +50,11 @@ func ExecuteExec(config *Config) error {
 		if err := sandbox.IsolateNetwork(); err != nil {
 			return fmt.Errorf("exec: %w", err)
 		}
+		if config.MaxPids > 0 {
+			if err := sandbox.EnforceMaxPids(config.MaxPids); err != nil {
+				return fmt.Errorf("exec: failed to enforce max pids: %w", err)
+			}
+		}
 	}
 
 	// Resolve the command path

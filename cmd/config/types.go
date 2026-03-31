@@ -29,6 +29,7 @@ type CommonFlags struct {
 	Sandbox        bool
 	Exec           bool
 	SandboxWorkDir string
+	MaxPids        uint64
 }
 
 // WebhookConfig holds webhook-related flags

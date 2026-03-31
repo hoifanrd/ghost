@@ -156,6 +156,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		Sandbox:        runFlags.Sandbox,
 		Exec:           runFlags.Exec,
 		SandboxWorkDir: runFlags.SandboxWorkDir,
+		MaxPids:        runFlags.MaxPids,
 	}
 
 	// In exec mode, replace the current process entirely.
@@ -267,6 +268,11 @@ func init() {
 		// Validate --exec incompatibilities
 		if err := validateExecFlags(); err != nil {
 			return err
+		}
+
+		// Validate --max-pids requires --exec
+		if runFlags.MaxPids > 0 && !runFlags.Exec {
+			return fmt.Errorf("--max-pids requires --exec (RLIMIT_NPROC is set before execve)")
 		}
 
 		// Default sandbox-workdir to current working directory

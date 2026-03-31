@@ -30,6 +30,7 @@ func SetupCommonFlags(cmd *cobra.Command, flags *config.CommonFlags) {
 	cmd.Flags().BoolVar(&flags.Sandbox, "sandbox", false, "Apply Landlock filesystem and network namespace isolation before execution")
 	cmd.Flags().BoolVar(&flags.Exec, "exec", false, "Replace process via syscall.Exec (skips JSON output, webhooks, uploads)")
 	cmd.Flags().StringVar(&flags.SandboxWorkDir, "sandbox-workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
+	cmd.Flags().Uint64Var(&flags.MaxPids, "max-pids", 0, "Maximum number of processes for the current user (includes ghost itself; 0 = no limit)")
 }
 
 // SetupWebhookFlags adds webhook-related flags to a command
