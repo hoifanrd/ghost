@@ -86,7 +86,9 @@ Behavior:
 - Writes an initial timestamp immediately on start
 - Handles SIGTERM and SIGINT for graceful shutdown
 - Exits after 5 consecutive write failures
-- Reaps zombie children (important when fork/vfork is allowed in the container)
+- Reaps zombie children when running as PID 1 (no-op otherwise)
+
+On Linux, when a process dies its parent must call `wait()` to clear it from the process table — otherwise it lingers as a zombie holding a PID slot. Orphaned processes (whose parent died first) get reparented to PID 1, which is responsible for reaping them. In a sandbox container `ghost heartbeat` is PID 1, so it inherits this duty: a `SIGCHLD` handler drains zombies via `Wait4(-1, WNOHANG)`. Without it, fork bomb leftovers would exhaust the cgroup `PidsLimit` and block `docker exec` cleanup commands. This is the same role `tini` and `dumb-init` play.
 
 ## Advanced Features
 
