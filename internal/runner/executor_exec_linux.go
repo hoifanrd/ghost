@@ -52,6 +52,13 @@ func ExecuteExec(config *Config) error {
 		}
 	}
 
+	// Enforce process limit (independent of sandbox — works with --exec alone)
+	if config.MaxPids > 0 {
+		if err := sandbox.EnforceMaxPids(config.MaxPids); err != nil {
+			return fmt.Errorf("exec: failed to enforce max pids: %w", err)
+		}
+	}
+
 	// Resolve the command path
 	cmdPath, err := exec.LookPath(config.Command)
 	if err != nil {

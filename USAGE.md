@@ -6,7 +6,9 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
 
 - [Command Syntax](#command-syntax)
 - [Basic Usage](#basic-usage)
+  - [Heartbeat (Container Keepalive)](#heartbeat-container-keepalive)
 - [Advanced Features](#advanced-features)
+  - [Sandbox Isolation](#sandbox-isolation)
 - [Common Use Cases](#common-use-cases)
 - [JSON Output Reference](#json-output-reference)
 - [Exit Codes](#exit-codes)
@@ -28,6 +30,14 @@ ghost diff -i <input> -x <expected> -o <output> -e <stderr> [flags]
 ```
 
 All four I/O flags are required for consistency with the run command.
+
+### Heartbeat Command
+
+```
+ghost heartbeat [flags]
+```
+
+Runs as PID 1 in a container, writing timestamps for liveness detection and reaping zombie processes.
 
 ## Basic Usage
 
@@ -60,7 +70,50 @@ ghost diff -i student.txt -x answer.txt -o diff.txt -e errors.txt \
   --score 100
 ```
 
+### Heartbeat (Container Keepalive)
+
+Run a PID 1 keepalive process that writes Unix timestamps to a file. Intended for use as a container ENTRYPOINT to signal liveness. The heartbeat process also reaps zombie child processes to free PID slots in the cgroup.
+
+```bash
+# Default: writes to /output/.heartbeat every 10s
+ghost heartbeat
+
+# Custom interval and file
+ghost heartbeat --interval 5s --file /tmp/heartbeat
+```
+
+Behavior:
+- Writes an initial timestamp immediately on start
+- Handles SIGTERM and SIGINT for graceful shutdown
+- Exits after 5 consecutive write failures
+- Reaps zombie children (important when fork/vfork is allowed in the container)
+
 ## Advanced Features
+
+### Sandbox Isolation
+
+Run commands with Landlock filesystem restrictions and network namespace isolation (Linux only):
+
+```bash
+# Basic sandbox — restricts filesystem access and isolates network
+ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrusted-command
+
+# Custom working directory for read-write access
+ghost run --sandbox --sandbox-workdir /workspace \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
+
+# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
+ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
+
+# Limit processes to prevent fork bombs (requires --exec)
+# Ghost uses 1 slot, leaving 32 for the student command and its children
+ghost run --exec --sandbox --max-pids=33 \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+```
+
+Sandbox filesystem rules:
+- **Read-only**: `/usr`, `/bin`, `/lib`, `/lib64`, `/etc`
+- **Read-write**: `/output`, `/tmp`, and the sandbox working directory
 
 ### Context Metadata
 

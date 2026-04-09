@@ -33,6 +33,7 @@ type Config struct {
 	Sandbox        bool
 	Exec           bool
 	SandboxWorkDir string
+	MaxPids        uint64
 }
 
 type Result struct {
