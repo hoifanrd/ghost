@@ -10,8 +10,8 @@ import (
 )
 
 // ApplySandbox applies Landlock filesystem restrictions.
-// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing).
-// Read-write: /output, /tmp, and the given workDir.
+// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd.
+// Read-write: /output, /tmp, /dev, and the given work directory.
 func ApplySandbox(workDir string) error {
 	if workDir == "" {
 		return fmt.Errorf("sandbox: workDir must not be empty")
@@ -19,7 +19,8 @@ func ApplySandbox(workDir string) error {
 
 	err := landlock.V5.BestEffort().RestrictPaths(
 		landlock.RODirs("/usr", "/bin", "/lib", "/lib64", "/etc").IgnoreIfMissing(),
-		landlock.RWDirs("/output", "/tmp", workDir),
+		landlock.RODirs("/proc/self/fd"),
+		landlock.RWDirs("/output", "/tmp", "/dev", workDir),
 	)
 	if err != nil {
 		return fmt.Errorf("sandbox: landlock restrict paths: %w", err)
