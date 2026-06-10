@@ -1,0 +1,15 @@
+{
+  "protocol_version": 1,
+  "downloads": [
+    {
+      "bucket": "course-1",
+      "prefix": "submissions/42/",
+      "target_dir": "."
+    },
+    {
+      "bucket": "course-1",
+      "prefix": "exams/7/marking-scheme/expected/",
+      "target_dir": "expected"
+    }
+  ]
+}
