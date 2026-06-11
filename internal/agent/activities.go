@@ -121,12 +121,16 @@ func (a *Activities) RunExec(ctx context.Context, in contract.RunExecInput) (con
 	}
 
 	// Per-exec staging session: stdin materialisation and stdio capture
-	// files live in the agent-owned 0700 staging area, out of reach of
-	// the sandboxed child's filesystem rules.
+	// files live in the agent-owned 0700 staging area.
 	sessionDir, err := os.MkdirTemp(a.cfg.StagingDir, "exec-")
 	if err != nil {
 		return infraFail(fmt.Errorf("failed to create staging session dir: %w", err))
 	}
+	// Reclaim the session on return — after the uploads below have read
+	// the capture files. Staging may hold exam-answer content (a stdin
+	// blob, captured stdout); leaving it for the next exec in the same
+	// run would expose it to same-UID student code under /tmp.
+	defer func() { _ = os.RemoveAll(sessionDir) }()
 
 	// Stdin: inline content > workspace path > /dev/null.
 	stdinPath := os.DevNull

@@ -89,7 +89,14 @@ func (s *minioStore) DownloadPrefix(ctx context.Context, bucket, prefix, targetD
 	files := 0
 	var total int64
 
-	for obj := range s.client.ListObjects(ctx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+	// minio's ListObjects runs a goroutine that blocks sending into the
+	// result channel; an early return without draining it leaks the
+	// goroutine until ctx is cancelled. Cancel a dedicated child on
+	// every exit path.
+	listCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	for obj := range s.client.ListObjects(listCtx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
 		if obj.Err != nil {
 			return files, total, fmt.Errorf("agent: failed to list %s/%s: %w", bucket, prefix, obj.Err)
 		}
