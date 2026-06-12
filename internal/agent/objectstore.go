@@ -89,27 +89,35 @@ func (s *minioStore) DownloadPrefix(ctx context.Context, bucket, prefix, targetD
 	files := 0
 	var total int64
 
-	// minio's ListObjects runs a goroutine that blocks sending into the
-	// result channel; an early return without draining it leaks the
-	// goroutine until ctx is cancelled. Cancel a dedicated child on
-	// every exit path.
+	// Drain the full object listing BEFORE downloading any object. minio's
+	// ListObjects streams results over a single HTTP response fed into the
+	// channel by a goroutine; doing per-object GetObject work *inside* the
+	// range loop stalls that stream and can truncate the listing (a few
+	// objects come back, the rest are silently dropped). Collecting the keys
+	// first, then downloading, keeps the list stream short-lived and
+	// complete. The child ctx is cancelled as soon as the drain finishes so
+	// the list goroutine never leaks.
+	var keys []string
 	listCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	for obj := range s.client.ListObjects(listCtx, bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
 		if obj.Err != nil {
+			cancel()
 			return files, total, fmt.Errorf("agent: failed to list %s/%s: %w", bucket, prefix, obj.Err)
 		}
 		// Skip directory marker objects.
 		if strings.HasSuffix(obj.Key, "/") {
 			continue
 		}
+		keys = append(keys, obj.Key)
+	}
+	cancel()
 
-		r, err := s.client.GetObject(ctx, bucket, obj.Key, minio.GetObjectOptions{})
+	for _, key := range keys {
+		r, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 		if err != nil {
-			return files, total, fmt.Errorf("agent: failed to get %s/%s: %w", bucket, obj.Key, err)
+			return files, total, fmt.Errorf("agent: failed to get %s/%s: %w", bucket, key, err)
 		}
-		n, err := materializeObject(targetDir, prefix, obj.Key, r)
+		n, err := materializeObject(targetDir, prefix, key, r)
 		_ = r.Close()
 		if err != nil {
 			return files, total, err
