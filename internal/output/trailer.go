@@ -7,8 +7,8 @@ import (
 )
 
 // TrailerSchema is the current result-trailer schema version. It is the highest
-// schema this ghost emits and the value reported by `ghost capabilities` as
-// schema_max. Frozen at 1 by the sandbox-runtime contract; bump only with core.
+// schema this ghost emits. Frozen at 1 by the sandbox-runtime contract; bump
+// only with core.
 const TrailerSchema = 1
 
 // Trailer is the structured result a supervised execution emits when its child

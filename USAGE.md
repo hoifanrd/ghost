@@ -10,7 +10,6 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
 - [Advanced Features](#advanced-features)
   - [Sandbox Isolation](#sandbox-isolation)
   - [Supervise Mode](#supervise-mode)
-  - [Capabilities](#capabilities)
 - [Common Use Cases](#common-use-cases)
 - [JSON Output Reference](#json-output-reference)
 - [Exit Codes](#exit-codes)
@@ -40,14 +39,6 @@ ghost heartbeat [flags]
 ```
 
 Runs as PID 1 in a container, writing timestamps for liveness detection and reaping zombie processes.
-
-### Capabilities Command
-
-```
-ghost capabilities
-```
-
-Prints a JSON descriptor of supported features and the result-trailer schema (see [Capabilities](#capabilities)).
 
 ## Basic Usage
 
@@ -210,21 +201,6 @@ Trailer schema (version `1`):
   This is the authoritative OOM signal, independent of `exit_code`.
 - `truncated` — true if output hit `--max-output-bytes`.
 - `duration_ms` — wall-clock child runtime.
-
-### Capabilities
-
-`ghost capabilities` prints a JSON descriptor so an orchestrator can probe a
-base image's ghost version and decide whether to use supervise mode or fall
-back to the legacy exec path against an older image:
-
-```bash
-$ ghost capabilities
-{"schema_max":1,"features":["supervise","result-trailer","peak-memory-sampling","oom-attribution","output-cap","max-pids"]}
-```
-
-- `schema_max` — the highest result-trailer schema this ghost emits.
-- `features` — capability tokens; `result-trailer` and `supervise` gate
-  supervise-vs-fallback.
 
 ### Context Metadata
 
