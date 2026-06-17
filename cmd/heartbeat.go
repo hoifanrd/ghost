@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zinc-sig/ghost/internal/reaper"
 )
 
 var (
@@ -34,6 +35,9 @@ func init() {
 }
 
 func heartbeatCommand(cmd *cobra.Command, args []string) error {
+	// Reap zombie children so fork bomb corpses free their PID slots promptly.
+	reaper.Start()
+
 	ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 

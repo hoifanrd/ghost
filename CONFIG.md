@@ -16,6 +16,22 @@ Complete reference for all Ghost configuration options including command-line fl
 | `--score` | - | Optional score (0 if command fails) | No | - |
 | `--help` | `-h` | Show help information | No | - |
 
+### Sandbox & Exec Flags
+
+| Flag | Description | Required | Default |
+|------|-------------|----------|---------|
+| `--sandbox` | Apply Landlock filesystem and network namespace isolation (Linux only) | No | `false` |
+| `--exec` | Replace process via syscall.Exec (skips JSON output, webhooks, uploads) | No | `false` |
+| `--sandbox-workdir` | Working directory for Landlock read-write rules | No | Current directory |
+| `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (requires `--exec`; 0 = no limit) | No | `0` |
+
+### Heartbeat Flags
+
+| Flag | Description | Required | Default |
+|------|-------------|----------|---------|
+| `--interval` | Duration between heartbeat writes (e.g., 5s, 1m) | No | `10s` |
+| `--file` | File path to write heartbeat timestamps to | No | `/output/.heartbeat` |
+
 ### Diff-Specific Flags
 
 | Flag | Short | Description | Required | Default |
