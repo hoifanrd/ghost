@@ -76,9 +76,6 @@ Fork the command and keep ghost alive to measure peak memory, attribute OOM kill
 ghost run --supervise --sandbox --max-pids=33 --max-output-bytes=1048576 \
   --result-file=/output/.result \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
-
-# Probe a base image's ghost version (features + trailer schema)
-ghost capabilities
 ```
 
 ### Heartbeat (Container Keepalive)
