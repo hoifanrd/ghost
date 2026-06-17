@@ -4,7 +4,10 @@ package runner
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -99,6 +102,69 @@ func TestSuperviseTruncatesOutput(t *testing.T) {
 	}
 	if int64(len(data)) > cfg.MaxOutputBytes {
 		t.Errorf("output file %d bytes, want <= cap %d", len(data), cfg.MaxOutputBytes)
+	}
+}
+
+func TestResolvePeak(t *testing.T) {
+	tests := []struct {
+		name      string
+		baseline  int64
+		watermark int64
+		sampled   int64
+		want      int64
+	}{
+		{"watermark above baseline wins", 100, 150, 120, 150},
+		{"watermark equal to baseline falls back to sampled", 100, 100, 120, 120},
+		{"watermark below baseline falls back to sampled", 100, 90, 130, 130},
+		{"zero watermark falls back to sampled", 0, 0, 64, 64},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolvePeak(tt.baseline, tt.watermark, tt.sampled); got != tt.want {
+				t.Errorf("resolvePeak(%d, %d, %d) = %d, want %d",
+					tt.baseline, tt.watermark, tt.sampled, got, tt.want)
+			}
+		})
+	}
+}
+
+// runForExitErr runs a small command and returns the wait error so the test can
+// exercise exitCodeFor against a real *exec.ExitError / syscall.WaitStatus.
+func runForExitErr(t *testing.T, name string, args ...string) error {
+	t.Helper()
+	cmd := exec.Command(name, args...)
+	return cmd.Run()
+}
+
+func TestExitCodeFor(t *testing.T) {
+	// timedOut short-circuits to -1 regardless of waitErr.
+	if got := exitCodeFor(nil, true); got != -1 {
+		t.Errorf("exitCodeFor(nil, timedOut=true) = %d, want -1", got)
+	}
+	if got := exitCodeFor(errors.New("anything"), true); got != -1 {
+		t.Errorf("exitCodeFor(err, timedOut=true) = %d, want -1", got)
+	}
+
+	// Normal nil error => 0.
+	if got := exitCodeFor(nil, false); got != 0 {
+		t.Errorf("exitCodeFor(nil, false) = %d, want 0", got)
+	}
+
+	// Normal non-zero exit => the wait-status exit code is preserved.
+	err := runForExitErr(t, "sh", "-c", "exit 7")
+	if got := exitCodeFor(err, false); got != 7 {
+		t.Errorf("exitCodeFor(exit-7, false) = %d, want 7", got)
+	}
+
+	// Signalled-but-not-timeout (SIGSEGV) => -1.
+	err = runForExitErr(t, "sh", "-c", "kill -SEGV $$")
+	if got := exitCodeFor(err, false); got != -1 {
+		t.Errorf("exitCodeFor(SIGSEGV, false) = %d, want -1", got)
+	}
+
+	// Non-*exec.ExitError wait failure => -1 (abnormal).
+	if got := exitCodeFor(fmt.Errorf("wait failed: %w", os.ErrClosed), false); got != -1 {
+		t.Errorf("exitCodeFor(non-ExitError, false) = %d, want -1", got)
 	}
 }
 
