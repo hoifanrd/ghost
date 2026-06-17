@@ -28,8 +28,11 @@ type CommonFlags struct {
 	ScoreSet       bool
 	Sandbox        bool
 	Exec           bool
+	Supervise      bool
 	SandboxWorkDir string
 	MaxPids        uint64
+	MaxOutputBytes int64
+	ResultFile     string
 }
 
 // WebhookConfig holds webhook-related flags
