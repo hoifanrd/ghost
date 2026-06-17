@@ -40,4 +40,5 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(heartbeatCmd)
+	rootCmd.AddCommand(capabilitiesCmd)
 }
