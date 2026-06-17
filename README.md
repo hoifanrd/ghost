@@ -63,9 +63,22 @@ ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout 
 # Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
 ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
 
-# Limit processes to prevent fork bombs (requires --exec)
+# Limit processes to prevent fork bombs (requires --exec or --supervise)
 ghost run --exec --sandbox --max-pids=33 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+```
+
+### Supervise Mode
+
+Fork the command and keep ghost alive to measure peak memory, attribute OOM kills, enforce an output-size cap at write time, and emit a result trailer. The measurement wrapper for the multi-backend sandbox. See [USAGE.md](USAGE.md#supervise-mode).
+
+```bash
+ghost run --supervise --sandbox --max-pids=33 --max-output-bytes=1048576 \
+  --result-file=/output/.result \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+
+# Probe a base image's ghost version (features + trailer schema)
+ghost capabilities
 ```
 
 ### Heartbeat (Container Keepalive)
