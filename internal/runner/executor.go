@@ -31,9 +31,11 @@ type Config struct {
 	DryRun         bool
 	Timeout        time.Duration // 0 means no timeout
 	Sandbox        bool
-	Exec           bool
+	Supervise      bool
 	SandboxWorkDir string
 	MaxPids        uint64
+	MaxOutputBytes int64  // total /output byte cap for supervise mode
+	ResultFile     string // path the supervise trailer is written to
 }
 
 type Result struct {

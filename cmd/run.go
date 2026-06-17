@@ -154,15 +154,17 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		DryRun:         runFlags.DryRun,
 		Timeout:        runFlags.Timeout,
 		Sandbox:        runFlags.Sandbox,
-		Exec:           runFlags.Exec,
+		Supervise:      runFlags.Supervise,
 		SandboxWorkDir: runFlags.SandboxWorkDir,
 		MaxPids:        runFlags.MaxPids,
+		MaxOutputBytes: runFlags.MaxOutputBytes,
+		ResultFile:     runFlags.ResultFile,
 	}
 
-	// In exec mode, replace the current process entirely.
-	// No JSON output, webhooks, or uploads — the process is replaced.
-	if config.Exec {
-		return runner.ExecuteExec(config)
+	// In supervise mode, fork+wait the command and emit a result trailer.
+	// No JSON output, webhooks, or uploads.
+	if config.Supervise {
+		return runner.Supervise(config)
 	}
 
 	result, err := runner.Execute(config)
@@ -221,19 +223,22 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	return helpers.OutputJSONAndWebhook(jsonResult, runFlags.Verbose, runFlags.DryRun)
 }
 
-// validateExecFlags checks that --exec is not combined with incompatible flags.
-func validateExecFlags() error {
-	if !runFlags.Exec {
+// validateSuperviseFlags checks that --supervise is not combined with
+// incompatible flags. Supervise is a measurement wrapper, not a grading
+// uploader, so it rejects webhook/upload/dry-run.
+func validateSuperviseFlags() error {
+	if !runFlags.Supervise {
 		return nil
 	}
+	const reason = "supervise is a measurement wrapper, not a grading uploader"
 	if runWebhookConfig.URL != "" {
-		return fmt.Errorf("--exec is incompatible with --webhook-url (process is replaced via execve)")
+		return fmt.Errorf("--supervise is incompatible with --webhook-url (%s)", reason)
 	}
 	if runUploadConfig.Provider != "" {
-		return fmt.Errorf("--exec is incompatible with --upload-provider (process is replaced via execve)")
+		return fmt.Errorf("--supervise is incompatible with --upload-provider (%s)", reason)
 	}
 	if runFlags.DryRun {
-		return fmt.Errorf("--exec is incompatible with --dry-run (process is replaced via execve)")
+		return fmt.Errorf("--supervise is incompatible with --dry-run (%s)", reason)
 	}
 	return nil
 }
@@ -251,6 +256,12 @@ func init() {
 
 	// Setup common flags using helper
 	helpers.SetupCommonFlags(runCmd, &runFlags)
+
+	// Supervise-mode flags (run-only; diff/heartbeat do not need them).
+	runCmd.Flags().BoolVar(&runFlags.Supervise, "supervise", false, "Fork+wait the command and emit a result trailer (peak memory, OOM, output cap)")
+	runCmd.Flags().Int64Var(&runFlags.MaxOutputBytes, "max-output-bytes", 1048576, "Total /output byte cap enforced as output is written (supervise mode)")
+	runCmd.Flags().StringVar(&runFlags.ResultFile, "result-file", "/output/.result", "Path the supervise result trailer is written to")
+
 	helpers.SetupContextFlags(runCmd, &runContextConfig)
 	helpers.SetupUploadFlags(runCmd, &runUploadConfig)
 	helpers.SetupWebhookFlags(runCmd, &runWebhookConfig)
@@ -265,14 +276,14 @@ func init() {
 			return err
 		}
 
-		// Validate --exec incompatibilities
-		if err := validateExecFlags(); err != nil {
+		// Validate --supervise incompatibilities
+		if err := validateSuperviseFlags(); err != nil {
 			return err
 		}
 
-		// Validate --max-pids requires --exec
-		if runFlags.MaxPids > 0 && !runFlags.Exec {
-			return fmt.Errorf("--max-pids requires --exec (RLIMIT_NPROC is set before execve)")
+		// Validate --max-pids requires --supervise
+		if runFlags.MaxPids > 0 && !runFlags.Supervise {
+			return fmt.Errorf("--max-pids requires --supervise (RLIMIT_NPROC is set before the child runs)")
 		}
 
 		// Default sandbox-workdir to current working directory

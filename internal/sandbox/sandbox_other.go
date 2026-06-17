@@ -11,3 +11,6 @@ func ApplySandbox(workDir string) error {
 func EnforceMaxPids(maxPids uint64) error {
 	return nil
 }
+
+// LandlockAvailable is always false on non-Linux platforms.
+func LandlockAvailable() bool { return false }

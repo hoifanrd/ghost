@@ -6,7 +6,7 @@ import (
 	"github.com/zinc-sig/ghost/cmd/config"
 )
 
-func TestExecFlagValidation(t *testing.T) {
+func TestSuperviseFlagValidation(t *testing.T) {
 	tests := []struct {
 		name          string
 		setup         func()
@@ -14,50 +14,42 @@ func TestExecFlagValidation(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "exec with webhook-url is rejected",
+			name: "supervise with webhook-url is rejected",
 			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
+				runFlags = config.CommonFlags{Supervise: true}
 				runWebhookConfig.URL = "http://example.com"
-				runUploadConfig.Provider = ""
 			},
 			wantErr:       true,
-			errorContains: "--exec is incompatible with --webhook-url",
+			errorContains: "--supervise is incompatible with --webhook-url",
 		},
 		{
-			name: "exec with upload-provider is rejected",
+			name: "supervise with upload-provider is rejected",
 			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
-				runWebhookConfig.URL = ""
+				runFlags = config.CommonFlags{Supervise: true}
 				runUploadConfig.Provider = "minio"
 			},
 			wantErr:       true,
-			errorContains: "--exec is incompatible with --upload-provider",
+			errorContains: "--supervise is incompatible with --upload-provider",
 		},
 		{
-			name: "exec with dry-run is rejected",
+			name: "supervise with dry-run is rejected",
 			setup: func() {
-				runFlags = config.CommonFlags{Exec: true, DryRun: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
+				runFlags = config.CommonFlags{Supervise: true, DryRun: true}
 			},
 			wantErr:       true,
-			errorContains: "--exec is incompatible with --dry-run",
+			errorContains: "--supervise is incompatible with --dry-run",
 		},
 		{
-			name: "exec alone is accepted",
+			name: "supervise alone is accepted",
 			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
+				runFlags = config.CommonFlags{Supervise: true}
 			},
 			wantErr: false,
 		},
 		{
-			name: "sandbox without exec is accepted",
+			name: "supervise with sandbox and max-pids is accepted",
 			setup: func() {
-				runFlags = config.CommonFlags{Sandbox: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
+				runFlags = config.CommonFlags{Supervise: true, Sandbox: true, MaxPids: 33}
 			},
 			wantErr: false,
 		},
@@ -65,7 +57,6 @@ func TestExecFlagValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore globals
 			savedFlags := runFlags
 			savedWebhook := runWebhookConfig
 			savedUpload := runUploadConfig
@@ -74,11 +65,12 @@ func TestExecFlagValidation(t *testing.T) {
 				runWebhookConfig = savedWebhook
 				runUploadConfig = savedUpload
 			}()
+			runWebhookConfig.URL = ""
+			runUploadConfig.Provider = ""
 
 			tt.setup()
 
-			// Call the PreRunE validation logic directly
-			err := validateExecFlags()
+			err := validateSuperviseFlags()
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -86,10 +78,8 @@ func TestExecFlagValidation(t *testing.T) {
 				if tt.errorContains != "" && !contains(err.Error(), tt.errorContains) {
 					t.Errorf("error %q does not contain %q", err.Error(), tt.errorContains)
 				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
+			} else if err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}

@@ -60,11 +60,18 @@ ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrus
 # Specify a custom working directory for read-write access
 ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
-ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
+# Limit processes to prevent fork bombs (requires --supervise)
+ghost run --supervise --sandbox --max-pids=33 \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+```
 
-# Limit processes to prevent fork bombs (requires --exec)
-ghost run --exec --sandbox --max-pids=33 \
+### Supervise Mode
+
+Fork the command and keep ghost alive to measure peak memory, attribute OOM kills, enforce an output-size cap at write time, and emit a result trailer. The measurement wrapper for the multi-backend sandbox. See [USAGE.md](USAGE.md#supervise-mode).
+
+```bash
+ghost run --supervise --sandbox --max-pids=33 --max-output-bytes=1048576 \
+  --result-file=/output/.result \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
 
@@ -151,7 +158,6 @@ Ghost outputs structured JSON to stdout:
 - 🔧 **Environment configuration** - Configure via environment variables
 - 🔒 **Sandbox isolation** - Landlock filesystem restrictions + network namespace isolation (Linux)
 - 🛡️ **Process limiting** - RLIMIT_NPROC enforcement to prevent fork bombs
-- 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec`
 - 💓 **Heartbeat** - PID 1 container keepalive with timestamp file
 
 ## Documentation
