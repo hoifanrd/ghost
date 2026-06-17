@@ -31,7 +31,6 @@ type Config struct {
 	DryRun         bool
 	Timeout        time.Duration // 0 means no timeout
 	Sandbox        bool
-	Exec           bool
 	Supervise      bool
 	SandboxWorkDir string
 	MaxPids        uint64

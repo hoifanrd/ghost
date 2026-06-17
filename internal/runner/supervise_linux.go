@@ -28,8 +28,8 @@ const gracefulShutdownDelay = 5 * time.Second
 
 // Supervise forks the target command, measures it from a live parent (peak
 // memory, OOM attribution, output-size cap), and emits a result trailer to the
-// result file and as a stream frame on ghost's own stdout. Unlike ExecuteExec,
-// ghost is not replaced — it survives the child to measure and report.
+// result file and as a stream frame on ghost's own stdout. Ghost is not
+// replaced — it survives the child to measure and report.
 func Supervise(config *Config) error {
 	inputFile, err := os.Open(config.InputFile)
 	if err != nil {

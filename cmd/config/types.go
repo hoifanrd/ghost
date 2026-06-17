@@ -27,7 +27,6 @@ type CommonFlags struct {
 	Score          string
 	ScoreSet       bool
 	Sandbox        bool
-	Exec           bool
 	Supervise      bool
 	SandboxWorkDir string
 	MaxPids        uint64
