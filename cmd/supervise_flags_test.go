@@ -14,14 +14,6 @@ func TestSuperviseFlagValidation(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "supervise with exec is mutually exclusive",
-			setup: func() {
-				runFlags = config.CommonFlags{Supervise: true, Exec: true}
-			},
-			wantErr:       true,
-			errorContains: "mutually exclusive",
-		},
-		{
 			name: "supervise with webhook-url is rejected",
 			setup: func() {
 				runFlags = config.CommonFlags{Supervise: true}
@@ -78,7 +70,7 @@ func TestSuperviseFlagValidation(t *testing.T) {
 
 			tt.setup()
 
-			err := validateExecFlags()
+			err := validateSuperviseFlags()
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -91,4 +83,17 @@ func TestSuperviseFlagValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

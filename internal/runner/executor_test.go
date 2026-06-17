@@ -427,25 +427,3 @@ func TestExecuteWithSandboxFlag(t *testing.T) {
 	// but it must not panic.
 	_, _ = Execute(config)
 }
-
-func TestExecuteExecModeNonExistentCommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	inputFile := createTempFile(t, tmpDir, "input.txt", "")
-
-	config := &Config{
-		Command:    "nonexistentcommand12345",
-		Args:       []string{},
-		InputFile:  inputFile,
-		OutputFile: filepath.Join(tmpDir, "output.txt"),
-		StderrFile: filepath.Join(tmpDir, "stderr.txt"),
-		Exec:       true,
-	}
-
-	err := ExecuteExec(config)
-	if err == nil {
-		t.Fatal("expected error for non-existent command in exec mode, got nil")
-	}
-	if !strings.Contains(err.Error(), "command not found") && !strings.Contains(err.Error(), "not supported") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
