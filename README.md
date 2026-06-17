@@ -60,11 +60,8 @@ ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrus
 # Specify a custom working directory for read-write access
 ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
-ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
-
-# Limit processes to prevent fork bombs (requires --exec or --supervise)
-ghost run --exec --sandbox --max-pids=33 \
+# Limit processes to prevent fork bombs (requires --supervise)
+ghost run --supervise --sandbox --max-pids=33 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
 
@@ -161,7 +158,6 @@ Ghost outputs structured JSON to stdout:
 - 🔧 **Environment configuration** - Configure via environment variables
 - 🔒 **Sandbox isolation** - Landlock filesystem restrictions + network namespace isolation (Linux)
 - 🛡️ **Process limiting** - RLIMIT_NPROC enforcement to prevent fork bombs
-- 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec`
 - 💓 **Heartbeat** - PID 1 container keepalive with timestamp file
 
 ## Documentation

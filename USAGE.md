@@ -105,12 +105,9 @@ ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrus
 ghost run --sandbox --sandbox-workdir /workspace \
   -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
-ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
-
-# Limit processes to prevent fork bombs (requires --exec)
+# Limit processes to prevent fork bombs (requires --supervise)
 # Ghost uses 1 slot, leaving 32 for the student command and its children
-ghost run --exec --sandbox --max-pids=33 \
+ghost run --supervise --sandbox --max-pids=33 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
 
@@ -121,11 +118,10 @@ Sandbox filesystem rules:
 ### Supervise Mode
 
 Supervise mode (`--supervise`) is the in-container measurement wrapper for the
-multi-backend sandbox. Unlike `--exec` (which replaces the ghost process via
-`execve` and emits nothing), supervise **forks** the command and keeps ghost
-alive alongside it to measure peak memory, attribute OOM kills, enforce the
-output-size cap as bytes are written, and emit a structured result trailer when
-the command finishes.
+multi-backend sandbox. It **forks** the command and keeps ghost alive alongside
+it to measure peak memory, attribute OOM kills, enforce the output-size cap as
+bytes are written, and emit a structured result trailer when the command
+finishes.
 
 ```bash
 # Fork the command, measure it, and write a result trailer
@@ -137,7 +133,7 @@ ghost run --supervise --sandbox --max-pids=33 \
 ```
 
 Supervise-specific flags:
-- `--supervise` — enable supervise mode (mutually exclusive with `--exec`).
+- `--supervise` — enable supervise mode.
 - `--max-output-bytes` — total `/output` byte cap (stdout + stderr combined),
   enforced at write time. Default `1048576` (1 MiB). Excess bytes are dropped
   and the trailer's `truncated` flag is set; the child is never killed for
@@ -146,8 +142,8 @@ Supervise-specific flags:
   `/output/.result`.
 
 `--supervise` is compatible with `--sandbox`, `--sandbox-workdir`, `--max-pids`,
-and `--timeout`, and (like `--exec`) is incompatible with `--webhook-url`,
-`--upload-provider`, and `--dry-run`.
+and `--timeout`, and is incompatible with `--webhook-url`, `--upload-provider`,
+and `--dry-run`.
 
 **Child isolation.** With `--sandbox`, the forked child is placed in a new
 user + network namespace (`CLONE_NEWUSER | CLONE_NEWNET`, UID/GID mapped to the

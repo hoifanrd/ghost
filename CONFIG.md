@@ -16,15 +16,14 @@ Complete reference for all Ghost configuration options including command-line fl
 | `--score` | - | Optional score (0 if command fails) | No | - |
 | `--help` | `-h` | Show help information | No | - |
 
-### Sandbox & Exec Flags
+### Sandbox & Supervise Flags
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
 | `--sandbox` | Apply Landlock filesystem and network namespace isolation (Linux only) | No | `false` |
-| `--exec` | Replace process via syscall.Exec (skips JSON output, webhooks, uploads) | No | `false` |
-| `--supervise` | Fork+wait the command and emit a result trailer; mutually exclusive with `--exec` (skips JSON output, webhooks, uploads) | No | `false` |
+| `--supervise` | Fork+wait the command and emit a result trailer (skips JSON output, webhooks, uploads) | No | `false` |
 | `--sandbox-workdir` | Working directory for Landlock read-write rules | No | Current directory |
-| `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (requires `--exec` or `--supervise`; 0 = no limit) | No | `0` |
+| `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (requires `--supervise`; 0 = no limit) | No | `0` |
 
 ### Supervise Flags
 
