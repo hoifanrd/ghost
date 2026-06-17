@@ -10,6 +10,8 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
   - [Heartbeat (Container Keepalive)](#heartbeat-container-keepalive)
 - [Advanced Features](#advanced-features)
   - [Sandbox Isolation](#sandbox-isolation)
+  - [Supervise Mode](#supervise-mode)
+  - [Capabilities](#capabilities)
 - [Common Use Cases](#common-use-cases)
 - [JSON Output Reference](#json-output-reference)
 - [Exit Codes](#exit-codes)
@@ -80,6 +82,14 @@ ghost agent
 ```
 
 The agent runs until it receives SIGTERM/SIGINT, then drains in-flight activities gracefully. On a protocol version mismatch with core it fails activities with the non-retryable `GhostProtocolMismatch` error — rebuild the environment image with a current ghost.
+
+### Capabilities Command
+
+```
+ghost capabilities
+```
+
+Prints a JSON descriptor of supported features and the result-trailer schema (see [Capabilities](#capabilities)).
 
 ## Basic Usage
 
@@ -158,6 +168,105 @@ ghost run --exec --sandbox --max-pids=33 \
 Sandbox filesystem rules:
 - **Read-only**: `/usr`, `/bin`, `/lib`, `/lib64`, `/etc`
 - **Read-write**: `/output`, `/tmp`, and the sandbox working directory
+
+### Supervise Mode
+
+Supervise mode (`--supervise`) is the in-container measurement wrapper for the
+multi-backend sandbox. Unlike `--exec` (which replaces the ghost process via
+`execve` and emits nothing), supervise **forks** the command and keeps ghost
+alive alongside it to measure peak memory, attribute OOM kills, enforce the
+output-size cap as bytes are written, and emit a structured result trailer when
+the command finishes.
+
+```bash
+# Fork the command, measure it, and write a result trailer
+ghost run --supervise --sandbox --max-pids=33 \
+  --max-output-bytes=1048576 \
+  --result-file=/output/.result \
+  -i /dev/null -o /output/stdout -e /output/stderr \
+  -- python3 main.py
+```
+
+Supervise-specific flags:
+- `--supervise` — enable supervise mode (mutually exclusive with `--exec`).
+- `--max-output-bytes` — total `/output` byte cap (stdout + stderr combined),
+  enforced at write time. Default `1048576` (1 MiB). Excess bytes are dropped
+  and the trailer's `truncated` flag is set; the child is never killed for
+  overshoot.
+- `--result-file` — where the result trailer JSON is written. Default
+  `/output/.result`.
+
+`--supervise` is compatible with `--sandbox`, `--sandbox-workdir`, `--max-pids`,
+and `--timeout`, and (like `--exec`) is incompatible with `--webhook-url`,
+`--upload-provider`, and `--dry-run`.
+
+**Child isolation.** With `--sandbox`, the forked child is placed in a new
+user + network namespace (`CLONE_NEWUSER | CLONE_NEWNET`, UID/GID mapped to the
+current user). The user namespace lets an unprivileged container create the
+network namespace, so the child gets loopback-only networking even without
+`CAP_SYS_ADMIN`. If unprivileged user namespaces are disabled on the host, the
+command **hard-fails** with a clear error rather than silently leaking the host
+network.
+
+**Timeout.** When `--timeout` is set, supervise enforces it by sending
+`SIGTERM` to the child's process group, then `SIGKILL` after a grace period. On
+its own timeout it still writes the trailer with `exit_code: -1`, so a consumer
+always receives a trailer rather than a broken stream.
+
+#### Result trailer
+
+The trailer is a single JSON object, written to two destinations:
+
+1. **`--result-file`** (e.g. `/output/.result`) — read directly off the bind
+   mount, no orchestrator API call.
+2. **A framed line on ghost's own stdout** for backends that read the exec
+   stream:
+
+   ```
+   \x1e\x1eZINC-RESULT\x1e<compact-json>\x1e\x1e
+   ```
+
+   The two RS (`0x1e`) bytes plus the `ZINC-RESULT` token guard against false
+   matches in the child's real output (which lives in `/output/{stdout,stderr}`,
+   never on this stream).
+
+Trailer schema (version `1`):
+
+```json
+{
+  "schema": 1,
+  "exit_code": 0,
+  "peak_memory_bytes": 5242880,
+  "oom_killed": false,
+  "truncated": false,
+  "duration_ms": 142
+}
+```
+
+- `exit_code` — the child's wait-status exit code on normal exit; `-1` for a
+  timeout or any signalled exit (including an OOM `SIGKILL`).
+- `peak_memory_bytes` — sampled from the container's own cgroup v2
+  (`memory.current` / `memory.peak`) at the cgroupns root. `0` if cgroup v2 is
+  not available (a dev-host degradation; cluster backends require cgroup v2).
+- `oom_killed` — true if the cgroup `oom_kill` counter rose during the run.
+  This is the authoritative OOM signal, independent of `exit_code`.
+- `truncated` — true if output hit `--max-output-bytes`.
+- `duration_ms` — wall-clock child runtime.
+
+### Capabilities
+
+`ghost capabilities` prints a JSON descriptor so an orchestrator can probe a
+base image's ghost version and decide whether to use supervise mode or fall
+back to the legacy exec path against an older image:
+
+```bash
+$ ghost capabilities
+{"schema_max":1,"features":["supervise","result-trailer","peak-memory-sampling","oom-attribution","output-cap","max-pids"]}
+```
+
+- `schema_max` — the highest result-trailer schema this ghost emits.
+- `features` — capability tokens; `result-trailer` and `supervise` gate
+  supervise-vs-fallback.
 
 ### Context Metadata
 
