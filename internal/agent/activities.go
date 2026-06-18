@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -18,6 +19,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 
 	"github.com/zinc-sig/ghost/internal/agent/contract"
+	"github.com/zinc-sig/ghost/internal/reaper"
 )
 
 // heartbeatInterval is how often the agent records an activity heartbeat
@@ -247,11 +249,19 @@ func (a *Activities) RunExec(ctx context.Context, in contract.RunExecInput) (con
 	case waitErr == nil:
 		code := 0
 		res.ExitCode = &code
+	case cmd.ProcessState != nil:
+		// Includes non-zero exits and signal deaths (-1). A non-zero exit is
+		// NOT an error per the contract.
+		code := cmd.ProcessState.ExitCode()
+		res.ExitCode = &code
 	default:
-		if cmd.ProcessState != nil {
-			// Includes non-zero exits and signal deaths (-1). A non-zero
-			// exit is NOT an error per the contract.
-			code := cmd.ProcessState.ExitCode()
+		// cmd.Wait() returned no ProcessState. As container init (PID 1) this
+		// is the zombie reaper racing cmd.Wait() and winning — Wait4(-1)
+		// reaped the child first, so cmd.Wait() saw ECHILD. Recover the real
+		// status the reaper captured rather than mis-reporting a spawn/wait
+		// failure (which would surface as an "error" scenario).
+		if ws, ok := reaper.WaitChild(cmd.Process.Pid); ok && errors.Is(waitErr, syscall.ECHILD) {
+			code := ws.ExitStatus() // -1 for signal deaths, matching os/exec
 			res.ExitCode = &code
 		} else {
 			infraErrs = append(infraErrs, fmt.Sprintf("wait failed: %v", waitErr))
