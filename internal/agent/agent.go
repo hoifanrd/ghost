@@ -54,7 +54,14 @@ func Run(cfg *Config) error {
 	}
 	defer c.Close()
 
-	w := worker.New(c, cfg.TaskQueue, worker.Options{})
+	// Bound activity concurrency per container. Core dispatches all of a
+	// stage's scenarios in parallel; without a cap a wide stage spawns N
+	// sandboxed children at once and the concurrent process count can
+	// exceed RLIMIT_NPROC (cfg.MaxPids), making fork/spawn fail
+	// intermittently ("could not spawn" -> error scenario state).
+	w := worker.New(c, cfg.TaskQueue, worker.Options{
+		MaxConcurrentActivityExecutionSize: cfg.MaxConcurrentExecs,
+	})
 	acts := NewActivities(cfg, store)
 	w.RegisterActivityWithOptions(acts.FetchSubmission, activity.RegisterOptions{Name: contract.FetchSubmissionActivity})
 	w.RegisterActivityWithOptions(acts.RunExec, activity.RegisterOptions{Name: contract.RunExecActivity})

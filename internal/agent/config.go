@@ -38,7 +38,21 @@ const (
 	// (default true; only disabled in test environments where Landlock
 	// or network namespaces are unavailable).
 	EnvSandbox = "GHOST_AGENT_SANDBOX"
+	// EnvMaxConcurrentExecs bounds how many activities the worker runs at
+	// once in this container (default 4; 0 falls back to the default).
+	// Core dispatches all of a stage's scenarios in parallel, so without a
+	// bound a wide stage spawns N children at once and the concurrent
+	// process count can exceed RLIMIT_NPROC (EnvMaxPids), making fork/spawn
+	// fail intermittently ("could not spawn" -> error). Keep
+	// MaxConcurrentExecs * (procs per exec) comfortably under MaxPids.
+	EnvMaxConcurrentExecs = "GHOST_AGENT_MAX_CONCURRENT_EXECS"
 )
+
+// defaultMaxConcurrentExecs bounds concurrent activity execution per
+// container. 4 keeps the live process count well under the default
+// MaxPids (32) even for multi-process commands, while still overlapping
+// scenarios for throughput.
+const defaultMaxConcurrentExecs = 4
 
 // Config is the agent's boot configuration, read from the GHOST_AGENT_*
 // environment (see contract.Env* and the agent-internal Env* consts).
@@ -66,6 +80,10 @@ type Config struct {
 	DefaultTimeout time.Duration
 	MaxPids        uint64
 	Sandbox        bool
+
+	// MaxConcurrentExecs bounds how many activities run at once in this
+	// container (worker.Options.MaxConcurrentActivityExecutionSize).
+	MaxConcurrentExecs int
 
 	// GhostPath is the ghost binary spawned as the sandboxed child
 	// (`ghost run --exec ...`). Defaults to the running executable;
@@ -129,6 +147,17 @@ func LoadConfig() (*Config, error) {
 		cfg.MaxPids = n
 	} else {
 		cfg.MaxPids = 32
+	}
+
+	if v := os.Getenv(EnvMaxConcurrentExecs); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("agent: invalid %s %q: want a non-negative integer", EnvMaxConcurrentExecs, v)
+		}
+		cfg.MaxConcurrentExecs = n
+	}
+	if cfg.MaxConcurrentExecs <= 0 {
+		cfg.MaxConcurrentExecs = defaultMaxConcurrentExecs
 	}
 
 	// Staging is agent-owned (stdin materialisation, stdio captures) and

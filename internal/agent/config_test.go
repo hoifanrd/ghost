@@ -48,6 +48,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.MaxPids != 32 {
 		t.Errorf("MaxPids = %d, want 32", cfg.MaxPids)
 	}
+	if cfg.MaxConcurrentExecs != defaultMaxConcurrentExecs {
+		t.Errorf("MaxConcurrentExecs = %d, want %d", cfg.MaxConcurrentExecs, defaultMaxConcurrentExecs)
+	}
 	if cfg.DefaultTimeout != 60*time.Second {
 		t.Errorf("DefaultTimeout = %v, want 60s", cfg.DefaultTimeout)
 	}
@@ -68,6 +71,7 @@ func TestLoadConfigOverrides(t *testing.T) {
 	t.Setenv(contract.EnvTemporalAuthToken, "auth-token")
 	t.Setenv(EnvSandbox, "false")
 	t.Setenv(EnvMaxPids, "128")
+	t.Setenv(EnvMaxConcurrentExecs, "8")
 	t.Setenv(EnvDefaultTimeout, "5m")
 
 	cfg, err := LoadConfig()
@@ -95,6 +99,9 @@ func TestLoadConfigOverrides(t *testing.T) {
 	}
 	if cfg.MaxPids != 128 {
 		t.Errorf("MaxPids = %d, want 128", cfg.MaxPids)
+	}
+	if cfg.MaxConcurrentExecs != 8 {
+		t.Errorf("MaxConcurrentExecs = %d, want 8", cfg.MaxConcurrentExecs)
 	}
 	if cfg.DefaultTimeout != 5*time.Minute {
 		t.Errorf("DefaultTimeout = %v, want 5m", cfg.DefaultTimeout)
