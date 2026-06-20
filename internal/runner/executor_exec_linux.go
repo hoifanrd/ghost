@@ -3,6 +3,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,11 @@ func ExecuteExec(config *Config) error {
 		if err := sandbox.ApplySandbox(config.SandboxWorkDir); err != nil {
 			return fmt.Errorf("exec: %w", err)
 		}
-		if err := sandbox.IsolateNetwork(); err != nil {
+		// A capability-dropped container cannot create a netns
+		// (ErrNetworkIsolationUnsupported); that is non-fatal — egress is
+		// then the container/cluster's responsibility, surfaced by the
+		// agent at boot. Any other unshare error is a real failure.
+		if err := sandbox.IsolateNetwork(); err != nil && !errors.Is(err, sandbox.ErrNetworkIsolationUnsupported) {
 			return fmt.Errorf("exec: %w", err)
 		}
 	}

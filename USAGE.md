@@ -5,6 +5,7 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
 ## Table of Contents
 
 - [Command Syntax](#command-syntax)
+  - [Agent Command](#agent-command)
 - [Basic Usage](#basic-usage)
   - [Heartbeat (Container Keepalive)](#heartbeat-container-keepalive)
 - [Advanced Features](#advanced-features)
@@ -38,6 +39,47 @@ ghost heartbeat [flags]
 ```
 
 Runs as PID 1 in a container, writing timestamps for liveness detection and reaping zombie processes.
+
+### Agent Command
+
+```
+ghost agent
+```
+
+Runs ghost in agent mode (RFD 0015 grading runtime): a long-lived Temporal worker inside a grading container. The agent joins a per-run task queue and serves exactly two activities — `ghost-fetch-submission` (downloads the run's inputs into the workspace) and `ghost-run-exec` (runs one resolved exec spec). Each command is executed in a sandboxed **child** process via `ghost run --exec --sandbox --max-pids=N`; the agent process itself is never sandboxed because Landlock and `RLIMIT_NPROC` are process-wide and irreversible. When the agent is PID 1 it also reaps zombies.
+
+The wire contract (activity names, payload shapes, protocol version) is frozen in `internal/agent/contract`. Agent mode has no flags; everything is configured through `GHOST_AGENT_*` environment variables injected by the runner backend at dispatch. The agent strips **every** `GHOST_AGENT_*` variable from the environment of the commands it spawns, so credentials never reach student code.
+
+| Environment Variable | Required | Default | Description |
+|---|---|---|---|
+| `GHOST_AGENT_TEMPORAL_ADDRESS` | yes | — | Temporal frontend `host:port` |
+| `GHOST_AGENT_TEMPORAL_NAMESPACE` | no | `default` | Temporal namespace |
+| `GHOST_AGENT_TASK_QUEUE` | yes | — | Per-run task queue the worker joins |
+| `GHOST_AGENT_TEMPORAL_AUTH_TOKEN` | no | empty | Per-run auth token (unused interim; wired in RFD 0015 Phase 8) |
+| `GHOST_AGENT_STORAGE_ENDPOINT` | yes | — | S3/MinIO endpoint (`host:port`, or URL whose scheme overrides the secure flag) |
+| `GHOST_AGENT_STORAGE_ACCESS_KEY` | yes | — | Object storage access key |
+| `GHOST_AGENT_STORAGE_SECRET_KEY` | yes | — | Object storage secret key |
+| `GHOST_AGENT_STORAGE_SESSION_TOKEN` | no | empty | STS session token (per-run credentials, Phase 8) |
+| `GHOST_AGENT_STORAGE_SECURE` | no | `false` | Use TLS for object storage |
+| `GHOST_AGENT_WORKDIR` | no | `/workspace` | Run workspace root; all relative paths in specs resolve against it |
+| `GHOST_AGENT_STAGING_DIR` | no | fresh 0700 temp dir | Agent-owned staging area for stdin materialisation and stdio captures (never world-writable) |
+| `GHOST_AGENT_DEFAULT_TIMEOUT` | no | `60s` | Exec timeout when a spec's `timeout_ms` is 0 (Go duration) |
+| `GHOST_AGENT_MAX_PIDS` | no | `32` | `RLIMIT_NPROC` applied by the child before execve (0 disables) |
+| `GHOST_AGENT_SANDBOX` | no | `true` | Landlock + network namespace isolation of the child (disable only where the kernel lacks support, e.g. tests) |
+
+The first ten names are part of the frozen contract (`contract.Env*` consts); the last four are agent-internal knobs that share the prefix so they are scrubbed alongside the credentials.
+
+```bash
+# Typical container entrypoint
+export GHOST_AGENT_TEMPORAL_ADDRESS=temporal.internal:7233
+export GHOST_AGENT_TASK_QUEUE=ghost-run-55
+export GHOST_AGENT_STORAGE_ENDPOINT=minio.internal:9000
+export GHOST_AGENT_STORAGE_ACCESS_KEY=...
+export GHOST_AGENT_STORAGE_SECRET_KEY=...
+ghost agent
+```
+
+The agent runs until it receives SIGTERM/SIGINT, then drains in-flight activities gracefully. On a protocol version mismatch with core it fails activities with the non-retryable `GhostProtocolMismatch` error — rebuild the environment image with a current ghost.
 
 ## Basic Usage
 

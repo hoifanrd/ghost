@@ -1,0 +1,24 @@
+{
+  "protocol_version": 1,
+  "stage": "test",
+  "scenario_code": "q_sa",
+  "spec": {
+    "command": "diff",
+    "args": [
+      "--ignore-case",
+      "q_sa.txt",
+      "expected/q_sa.expected"
+    ],
+    "stdin_path": "q_sa.in",
+    "stdout_path": "q_sa.out",
+    "timeout_ms": 10000,
+    "env": {
+      "LANG": "C"
+    },
+    "workdir": "."
+  },
+  "stdio_upload": {
+    "bucket": "course-1",
+    "key_prefix": "runs/55/test/q_sa"
+  }
+}
