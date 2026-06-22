@@ -20,8 +20,8 @@ import (
 )
 
 // ghostBin is the real ghost binary built once by TestMain. RunExec
-// spawns it as the sandboxed child (`ghost run --exec ...`), so these
-// tests exercise the actual cmd/run.go flag surface, not a stub.
+// spawns it as the sandboxed child (`ghost exec ...`), so these
+// tests exercise the actual cmd/exec.go flag surface, not a stub.
 var ghostBin string
 
 func TestMain(m *testing.M) {

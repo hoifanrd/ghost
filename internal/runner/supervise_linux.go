@@ -70,15 +70,21 @@ func Supervise(config *Config) error {
 	cmd.Stdout = newCappedWriter(outFile, budget)
 	cmd.Stderr = newCappedWriter(errFile, budget)
 
-	// Child isolation: user+network namespace with UID/GID maps (§7). Setpgid
-	// lets the timeout escalation signal the whole process group.
-	if config.Sandbox {
+	// Child isolation: Landlock and the user+network namespace are now
+	// orthogonal (§7). Setpgid lets the timeout escalation signal the whole
+	// process group.
+	if config.Landlock {
 		// Apply Landlock to the parent before fork; it is inherited by the
 		// child. /output stays RW (RWDirs includes it), so the trailer write
 		// below is permitted.
 		if err := sandbox.ApplySandbox(config.SandboxWorkDir); err != nil {
 			return fmt.Errorf("supervise: %w", err)
 		}
+	}
+	if config.IsolateNetwork {
+		// userns netns: CLONE_NEWUSER|CLONE_NEWNET. Only created when network
+		// isolation is requested — without it ghost never calls
+		// clone(CLONE_NEWUSER), which the sandbox seccomp profile blocks.
 		cmd.SysProcAttr = superviseSysProcAttr()
 	} else {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -131,7 +137,7 @@ func Supervise(config *Config) error {
 		sampler.stop()
 		// §12.4 resolved: hard-fail with a clear error if userns creation
 		// EPERMs — no silent fall back to bare CLONE_NEWNET (network leak).
-		if config.Sandbox && errors.Is(err, syscall.EPERM) {
+		if config.IsolateNetwork && errors.Is(err, syscall.EPERM) {
 			return fmt.Errorf("supervise: failed to create user namespace for network isolation "+
 				"(unprivileged user namespaces may be disabled on this host): %w", err)
 		}

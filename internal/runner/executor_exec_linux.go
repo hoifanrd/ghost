@@ -43,11 +43,17 @@ func ExecuteExec(config *Config) error {
 		return fmt.Errorf("exec: dup3 stderr: %w", err)
 	}
 
-	// Apply sandbox if requested
-	if config.Sandbox {
+	// Apply Landlock filesystem restrictions if requested (independent of
+	// network isolation).
+	if config.Landlock {
 		if err := sandbox.ApplySandbox(config.SandboxWorkDir); err != nil {
 			return fmt.Errorf("exec: %w", err)
 		}
+	}
+
+	// Create the per-exec network namespace only when requested. Without it
+	// ghost never calls unshare(CLONE_NEWNET).
+	if config.IsolateNetwork {
 		// A capability-dropped container cannot create a netns
 		// (ErrNetworkIsolationUnsupported); that is non-fatal — egress is
 		// then the container/cluster's responsibility, surfaced by the

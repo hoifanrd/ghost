@@ -44,7 +44,7 @@ func TestSupervisePeakMemorySampled(t *testing.T) {
 }
 
 // TestSuperviseSandboxedPeakMemory is the regression guard for the Landlock
-// blocker: with Sandbox:true, Landlock is applied before the supervisor's
+// blocker: with Landlock:true, Landlock is applied before the supervisor's
 // cgroup reads, so omitting /sys/fs/cgroup from the allowlist makes those reads
 // EACCES and peak_memory_bytes always 0. It runs a memory-allocating child
 // under the full sandbox and asserts a non-zero peak.
@@ -61,7 +61,7 @@ func TestSuperviseSandboxedPeakMemory(t *testing.T) {
 	dir := t.TempDir()
 	cfg := superviseConfig(dir, "sh", "-c",
 		`a=$(head -c 33554432 /dev/zero | tr '\0' 'x'); sleep 0.2; printf '%s' "${#a}"`)
-	cfg.Sandbox = true
+	cfg.Landlock = true
 	cfg.SandboxWorkDir = dir
 	if err := Supervise(cfg); err != nil {
 		t.Fatalf("Supervise: %v", err)

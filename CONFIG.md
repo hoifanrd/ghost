@@ -4,36 +4,46 @@ Complete reference for all Ghost configuration options including command-line fl
 
 ## Command-Line Flags
 
-### Core Flags (Both Commands)
+### Common I/O Flags (run, exec, supervise, diff)
 
 | Flag | Short | Description | Required | Default |
 |------|-------|-------------|----------|---------|
 | `--input` | `-i` | Input file to redirect to stdin | ✅ Yes | - |
-| `--output` | `-o` | Output file to capture stdout (supports `local:remote` syntax) | ✅ Yes | - |
-| `--stderr` | `-e` | Error file to capture stderr (supports `local:remote` syntax) | ✅ Yes | - |
-| `--verbose` | `-v` | Show stderr on terminal while capturing | No | `false` |
+| `--output` | `-o` | Output file to capture stdout (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
+| `--stderr` | `-e` | Error file to capture stderr (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
 | `--timeout` | `-t` | Execution timeout (e.g., 30s, 2m, 500ms) | No | - |
-| `--score` | - | Optional score (0 if command fails) | No | - |
 | `--help` | `-h` | Show help information | No | - |
 
-### Sandbox & Exec Flags
+`--verbose`/`-v` and `--score` are available on `run` and `diff` only.
+
+### Exec & Supervise Isolation Flags
+
+Available **only** on `exec` and `supervise`. `--landlock` and `--isolate-network` are independent — either can be passed alone.
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
-| `--sandbox` | Apply Landlock filesystem and network namespace isolation (Linux only) | No | `false` |
-| `--exec` | Replace process via syscall.Exec (skips JSON output, webhooks, uploads) | No | `false` |
-| `--supervise` | Fork+wait the command and emit a result trailer; mutually exclusive with `--exec` (skips JSON output, webhooks, uploads) | No | `false` |
-| `--sandbox-workdir` | Working directory for Landlock read-write rules | No | Current directory |
-| `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (requires `--exec` or `--supervise`; 0 = no limit) | No | `0` |
+| `--landlock` | Apply Landlock filesystem restrictions only, no namespaces (Linux only) | No | `false` |
+| `--isolate-network` | Create a per-exec network namespace, loopback-only (on `supervise`, a user+network namespace) | No | `false` |
+| `--workdir` | Working directory for Landlock read-write rules | No | Current directory |
+| `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (includes ghost itself; 0 = no limit) | No | `0` |
 
-### Supervise Flags
+### Supervise-Only Flags
 
-Only meaningful with `--supervise`. See [USAGE.md](USAGE.md#supervise-mode) for the result-trailer schema and stream frame.
+See [USAGE.md](USAGE.md#supervise-mode) for the result-trailer schema and stream frame.
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
 | `--max-output-bytes` | Total `/output` byte cap (stdout + stderr), enforced at write time; excess is dropped and `truncated` is set | No | `1048576` |
 | `--result-file` | Path the result trailer JSON is written to | No | `/output/.result` |
+
+### Legacy `run`/`diff` Sandbox Flags
+
+The legacy `run` and `diff` commands keep the original combined isolation flag. `--sandbox` applies Landlock filesystem restrictions **and** a per-exec user+network namespace together. These flags are **not** available on `exec`/`supervise` (use `--landlock`/`--isolate-network`/`--workdir` there).
+
+| Flag | Description | Required | Default |
+|------|-------------|----------|---------|
+| `--sandbox` | Apply Landlock filesystem and network namespace isolation (Linux only) | No | `false` |
+| `--sandbox-workdir` | Working directory for Landlock read-write rules | No | Current directory |
 
 ### Heartbeat Flags
 
