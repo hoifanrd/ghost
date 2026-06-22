@@ -14,7 +14,6 @@ var (
 	execOutputFile string
 	execStderrFile string
 
-	execTimeoutStr     string
 	execLandlock       bool
 	execWorkdir        string
 	execIsolateNetwork bool
@@ -51,18 +50,12 @@ func execCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	timeout, err := helpers.ParseTimeout(execTimeoutStr)
-	if err != nil {
-		return err
-	}
-
 	config := &runner.Config{
 		Command:        args[0],
 		Args:           args[1:],
 		InputFile:      execInputFile,
 		OutputFile:     execOutputFile,
 		StderrFile:     execStderrFile,
-		Timeout:        timeout,
 		Exec:           true,
 		Landlock:       execLandlock,
 		IsolateNetwork: execIsolateNetwork,
@@ -81,7 +74,8 @@ func init() {
 	_ = execCmd.MarkFlagRequired("output")
 	_ = execCmd.MarkFlagRequired("stderr")
 
-	execCmd.Flags().StringVarP(&execTimeoutStr, "timeout", "t", "", "Timeout duration (e.g., 30s, 2m, 500ms)")
+	// No --timeout: exec replaces the process via execve, so no parent survives
+	// to enforce a deadline — use supervise when a timeout is needed.
 	execCmd.Flags().BoolVar(&execLandlock, "landlock", false, "Apply Landlock filesystem restrictions before execution")
 	execCmd.Flags().StringVar(&execWorkdir, "workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
 	execCmd.Flags().BoolVar(&execIsolateNetwork, "isolate-network", false, "Unshare a network namespace before exec (loopback-only); requires CAP_SYS_ADMIN — silently no-ops in a capability-dropped container, leaving the container's network in effect")

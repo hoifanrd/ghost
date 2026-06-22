@@ -17,10 +17,13 @@ func TestExecSuperviseSurface(t *testing.T) {
 		unwantFlags []string
 	}{
 		{
-			name:        "exec",
-			cmd:         execCmd,
-			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids", "timeout"},
-			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "result-file", "max-output-bytes"},
+			name: "exec",
+			cmd:  execCmd,
+			// No --timeout: exec replaces the process via execve, so no parent
+			// survives to enforce a deadline (it was a silent no-op). supervise
+			// keeps --timeout because it forks and waits.
+			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids"},
+			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "result-file", "max-output-bytes", "timeout"},
 		},
 		{
 			name:        "supervise",

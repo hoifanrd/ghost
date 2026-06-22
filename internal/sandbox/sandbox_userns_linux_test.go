@@ -11,15 +11,10 @@ import (
 	"testing"
 )
 
-// TestApplySandboxWithUsernsSetup verifies that the AllowUsernsSetup grant lets
-// a Landlocked parent fork a child into a new user namespace — i.e. that Go's
-// write of /proc/<child>/{setgroups,uid_map,gid_map} from the (now Landlocked)
-// parent is permitted. Without the grant this fork fails with EPERM.
-//
-// Landlock is per-thread and irreversible, so the actual restriction is applied
-// in a re-exec'd child process; the parent inspects its RESULT line. The child
-// SKIPs (rather than fails) when the sandbox cannot be applied on this host
-// (e.g. /output absent on a dev box) so the test is a no-op off-cluster.
+// TestApplySandboxWithUsernsSetup verifies the AllowUsernsSetup grant lets a
+// Landlocked parent fork a userns child (the /proc id-map writes succeed).
+// Landlock is irreversible, so it runs in a re-exec'd child; that child SKIPs
+// when the sandbox can't be applied here (e.g. /output absent on a dev box).
 func TestApplySandboxWithUsernsSetup(t *testing.T) {
 	if os.Getenv("GHOST_TEST_SANDBOX_USERNS_CHILD") == "1" {
 		sandboxUsernsChild()

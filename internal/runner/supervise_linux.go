@@ -74,13 +74,9 @@ func Supervise(config *Config) error {
 	// orthogonal (§7). Setpgid lets the timeout escalation signal the whole
 	// process group.
 	if config.Landlock {
-		// Apply Landlock to the parent before fork; it is inherited by the
-		// child. /output stays RW (RWDirs includes it), so the trailer write
-		// below is permitted. The supervisor additionally needs to read cgroup
-		// memory files for sampling, and — when isolating the network via a new
-		// user namespace created AFTER this point — to write the child's id-map
-		// files under /proc. Both grants are scoped to supervise; exec keeps the
-		// tighter base sandbox.
+		// Applied to the parent pre-fork and inherited by the child. Supervise
+		// also needs cgroup reads (sampling) and, for userns network isolation,
+		// /proc id-map writes; both scoped here, not in exec's base sandbox.
 		if err := sandbox.ApplySandboxWith(config.SandboxWorkDir, sandbox.SandboxOpts{
 			AllowCgroupRead:  true,
 			AllowUsernsSetup: config.IsolateNetwork,
@@ -250,13 +246,9 @@ func superviseSysProcAttr() *syscall.SysProcAttr {
 // set during this exec and is exact; otherwise the sampled maximum is the best
 // per-exec estimate (never an over-report).
 //
-// NOTE: the returned value is the whole-cgroup watermark, which includes the
-// supervising ghost process's own footprint (it shares the child's cgroup). It
-// is therefore a per-cgroup peak, not a child-only peak — the same figure core
-// reads off the cgroup directly. This field is frozen by the sandbox-runtime
-// contract (output.Trailer); subtracting the supervisor's baseline to attribute
-// a child-only peak must be a coordinated change on both ghost and core, not a
-// unilateral one here.
+// NOTE: this is the whole-cgroup watermark and includes ghost's own footprint
+// (it shares the child's cgroup) — a per-cgroup peak, matching what core reads.
+// Changing the attribution is a coordinated ghost+core change (frozen contract).
 func resolvePeak(baseline, watermark, sampled int64) int64 {
 	if watermark > baseline {
 		return watermark

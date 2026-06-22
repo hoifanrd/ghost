@@ -11,10 +11,10 @@ Complete reference for all Ghost configuration options including command-line fl
 | `--input` | `-i` | Input file to redirect to stdin | ✅ Yes | - |
 | `--output` | `-o` | Output file to capture stdout (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
 | `--stderr` | `-e` | Error file to capture stderr (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
-| `--timeout` | `-t` | Execution timeout (e.g., 30s, 2m, 500ms) | No | - |
+| `--timeout` | `-t` | Execution timeout (e.g., 30s, 2m, 500ms) — `run`, `supervise`, `diff` only (not `exec`) | No | - |
 | `--help` | `-h` | Show help information | No | - |
 
-`--verbose`/`-v` and `--score` are available on `run` and `diff` only.
+`--verbose`/`-v` and `--score` are available on `run` and `diff` only. `--timeout` is **not** available on `exec`: exec replaces the process via `execve`, leaving no parent to enforce a deadline — use `supervise` when a timeout is required.
 
 ### Exec & Supervise Isolation Flags
 
@@ -23,7 +23,7 @@ Available **only** on `exec` and `supervise`. `--landlock` and `--isolate-networ
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
 | `--landlock` | Apply Landlock filesystem restrictions only, no namespaces (Linux only) | No | `false` |
-| `--isolate-network` | Create a per-exec network namespace, loopback-only (on `supervise`, a user+network namespace) | No | `false` |
+| `--isolate-network` | Loopback-only network isolation. On `exec`: a bare `CLONE_NEWNET` that requires `CAP_SYS_ADMIN` and silently no-ops in a capability-dropped container. On `supervise`: a `CLONE_NEWUSER`+`CLONE_NEWNET` user namespace that works without `CAP_SYS_ADMIN` | No | `false` |
 | `--workdir` | Working directory for Landlock read-write rules | No | Current directory |
 | `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (includes ghost itself; 0 = no limit) | No | `0` |
 
@@ -38,7 +38,7 @@ See [USAGE.md](USAGE.md#supervise-mode) for the result-trailer schema and stream
 
 ### Legacy `run`/`diff` Sandbox Flags
 
-The legacy `run` and `diff` commands keep the original combined isolation flag. `--sandbox` applies Landlock filesystem restrictions **and** a per-exec user+network namespace together. These flags are **not** available on `exec`/`supervise` (use `--landlock`/`--isolate-network`/`--workdir` there).
+The legacy `run` and `diff` commands keep the original combined isolation flag. `--sandbox` applies Landlock filesystem restrictions **and** a per-child network namespace (`CLONE_NEWNET`, which requires `CAP_SYS_ADMIN`) together. These flags are **not** available on `exec`/`supervise` (use `--landlock`/`--isolate-network`/`--workdir` there).
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
@@ -93,7 +93,7 @@ Common diff flags for grading:
 | `--webhook-auth-token` | Authentication token | - |
 | `--webhook-retries` | Maximum retry attempts (0 = no retries) | `3` |
 | `--webhook-retry-delay` | Initial delay between retries | `1s` |
-| `--webhook-timeout` | Request timeout duration | `30s` |
+| `--webhook-timeout` | Total timeout for webhook including retries | `30s` |
 | `--webhook-config` | Configuration as JSON | - |
 | `--webhook-config-kv` | Config key=value pairs (repeatable) | - |
 | `--webhook-config-file` | Path to config JSON file | - |
@@ -134,7 +134,7 @@ Common diff flags for grading:
 | `GHOST_WEBHOOK_AUTH_TOKEN` | Auth token | - |
 | `GHOST_WEBHOOK_RETRIES` | Max retry attempts | `3` |
 | `GHOST_WEBHOOK_RETRY_DELAY` | Initial retry delay | `1s` |
-| `GHOST_WEBHOOK_TIMEOUT` | Request timeout | `30s` |
+| `GHOST_WEBHOOK_TIMEOUT` | Total timeout including retries | `30s` |
 | `GHOST_WEBHOOK_*` | Any other webhook option | Various |
 
 ## Configuration Precedence
@@ -146,6 +146,8 @@ When the same configuration key appears in multiple sources, the precedence orde
 3. **JSON string** - e.g., `--webhook-config '{"url": "..."}'`
 4. **Config file** - e.g., `--webhook-config-file config.json`
 5. **Environment variables** (lowest priority) - e.g., `GHOST_WEBHOOK_URL`
+
+An explicitly passed `--webhook-*` flag wins over `--webhook-config`/`--webhook-config-kv`/`--webhook-config-file`/env even when the flag's value equals its default (e.g. `--webhook-method POST`), because precedence is keyed off which flags were explicitly set, not their values.
 
 ### Example: Multiple Configuration Sources
 
@@ -274,7 +276,7 @@ The webhook client implements exponential backoff with the following behavior:
 - **Initial delay**: Configured via `retry_delay` (default: 1s)
 - **Backoff multiplier**: 2.0 (doubles each retry)
 - **Max delay**: 30 seconds (caps the retry delay)
-- **Retryable status codes**: 408, 425, 429, 500, 502, 503, 504
+- **Retryable status codes**: 408, 429, 500, 502, 503, 504
 
 Example retry sequence with defaults:
 1. First retry: 1 second delay
@@ -304,7 +306,7 @@ Example retry sequence with defaults:
 |-------|------|--------------|
 | `expected` | string | Only in diff command output |
 | `timeout` | integer | When `--timeout` flag is used (milliseconds) |
-| `score` | integer | When `--score` flag is used |
+| `score` | number | When `--score` flag is used (exit code 0); preserves decimals, e.g. `95.5` |
 | `context` | object/any | When context is provided via any method |
 | `webhook_sent` | boolean | When webhook is configured |
 | `webhook_error` | string | When webhook fails (empty on success) |

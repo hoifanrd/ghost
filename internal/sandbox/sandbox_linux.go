@@ -10,23 +10,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// SandboxOpts enables Landlock grants beyond the base ruleset. They are opt-in
-// because they widen the sandbox: the base posture (exec mode) needs neither,
-// while supervise needs one or both depending on how it measures and isolates.
+// SandboxOpts enables opt-in Landlock grants that supervise needs beyond the
+// base ruleset used by exec.
 type SandboxOpts struct {
-	// AllowCgroupRead grants RO access to /sys/fs/cgroup so supervise's
-	// in-process sampler and baseline/final reads of memory.current/peak/events
-	// succeed after Landlock is applied. exec mode does not read cgroup files,
-	// so it leaves this off and keeps /sys/fs/cgroup unreadable to the child.
+	// AllowCgroupRead grants RO /sys/fs/cgroup so supervise's sampler can read
+	// memory.current/peak/events after Landlock is applied.
 	AllowCgroupRead bool
 
-	// AllowUsernsSetup grants the narrow /proc file access the parent needs to
-	// write a forked child's setgroups/uid_map/gid_map when isolating the
-	// network via a new user namespace AFTER Landlock is in force. Go's runtime
-	// performs those writes from the (now Landlocked) parent; without this grant
-	// the kernel denies them and the userns child fails to start. The grant is
-	// RWFiles (read+write existing files, no dir create/delete) and is
-	// DAC-bounded, so the inheriting child gains no meaningful new capability.
+	// AllowUsernsSetup grants RWFiles("/proc") so the Landlocked parent can write
+	// a userns child's setgroups/uid_map/gid_map; without it the fork is denied.
+	// Broader than those files (Landlock can't scope to the unborn child's pid)
+	// but DAC-bounded for the inheriting child.
 	AllowUsernsSetup bool
 }
 
@@ -38,9 +32,7 @@ func ApplySandbox(workDir string) error {
 }
 
 // ApplySandboxWith applies the base Landlock restrictions (see ApplySandbox)
-// plus any grants enabled in opts. Supervise uses it to additionally read
-// cgroup memory files and, when isolating the network, to set up the child's
-// user namespace after Landlock has been applied to the supervising parent.
+// plus any grants enabled in opts.
 func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	if workDir == "" {
 		return fmt.Errorf("sandbox: workDir must not be empty")
@@ -56,8 +48,7 @@ func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 		rules = append(rules, landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing())
 	}
 	if opts.AllowUsernsSetup {
-		// The parent writes /proc/<child>/{setgroups,uid_map,gid_map}; Go opens
-		// these existing files read+write, so WRITE_FILE alone is insufficient.
+		// RWFiles, not WriteFile: Go opens the id-map files read+write.
 		rules = append(rules, landlock.RWFiles("/proc"))
 	}
 

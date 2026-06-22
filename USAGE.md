@@ -34,7 +34,7 @@ The `--` separator is **required** to distinguish Ghost flags from the target co
 ghost exec [flags] -- <command> [args...]
 ```
 
-Replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. Filesystem and network isolation are two independent flags: `--landlock` (Landlock filesystem restrictions only) and `--isolate-network` (a per-exec network namespace, loopback-only). Either can be passed alone. `--workdir` sets the working directory for Landlock read-write rules, and `--max-pids` caps processes via `RLIMIT_NPROC` (includes ghost itself; 0 = no limit).
+Replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. Filesystem and network isolation are two independent flags: `--landlock` (Landlock filesystem restrictions only) and `--isolate-network` (a plain `unshare(CLONE_NEWNET)` that gives loopback-only networking; it requires `CAP_SYS_ADMIN` and silently no-ops in a capability-dropped container, leaving the container's network in effect). Either can be passed alone. `--workdir` sets the working directory for Landlock read-write rules, and `--max-pids` caps processes via `RLIMIT_NPROC` (includes ghost itself; 0 = no limit).
 
 ### Supervise Command
 
@@ -160,19 +160,21 @@ On Linux, when a process dies its parent must call `wait()` to clear it from the
 `exec` and `supervise` expose two **independent** isolation flags (Linux only); either may be passed alone:
 
 - `--landlock` — apply Landlock filesystem restrictions only (no namespaces). `--workdir` sets the read-write working directory.
-- `--isolate-network` — create a per-exec network namespace with loopback-only networking. On `supervise` this is a user+network namespace (`CLONE_NEWUSER | CLONE_NEWNET`); on `exec` it is a per-exec network namespace.
+- `--isolate-network` — give the command loopback-only networking. On `supervise` this is a user+network namespace (`CLONE_NEWUSER | CLONE_NEWNET`) that works without `CAP_SYS_ADMIN`. On `exec` it is a plain `unshare(CLONE_NEWNET)` that **requires `CAP_SYS_ADMIN`** and silently no-ops in a capability-dropped container, leaving the container's network in effect.
 
 ```bash
 # Landlock filesystem restrictions only
 ghost exec --landlock --workdir /workspace \
   -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Landlock + per-exec network namespace; this is what the grading agent runs
-# per exec spec when GHOST_AGENT_SANDBOX is on
-ghost exec --landlock --workdir /workspace --isolate-network --max-pids=33 \
+# Landlock + network unshare; this is what the grading agent runs per exec
+# spec when GHOST_AGENT_SANDBOX is on (with --max-pids from GHOST_AGENT_MAX_PIDS,
+# default 32). --isolate-network here requires CAP_SYS_ADMIN; in a
+# capability-dropped container it no-ops and the container's network applies.
+ghost exec --landlock --workdir /workspace --isolate-network --max-pids=32 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 
-# Network isolation alone, no Landlock
+# Network isolation alone, no Landlock (requires CAP_SYS_ADMIN)
 ghost exec --isolate-network \
   -i /dev/null -o /output/stdout -e /output/stderr -- ./command
 ```
@@ -183,7 +185,7 @@ Landlock filesystem rules:
 
 ### Sandbox Isolation (legacy run)
 
-`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-exec user+network namespace together. Its working directory flag is `--sandbox-workdir` (Linux only):
+`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-child network namespace (`CLONE_NEWNET`) together. Its working directory flag is `--sandbox-workdir` (Linux only):
 
 ```bash
 # Basic sandbox — restricts filesystem access and isolates network

@@ -2,12 +2,30 @@ package helpers
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/zinc-sig/ghost/cmd/config"
 	contextparser "github.com/zinc-sig/ghost/internal/context"
 	"github.com/zinc-sig/ghost/internal/webhook"
 )
+
+// RecordWebhookChanges records which direct webhook-* flags were explicitly set,
+// so BuildWebhookConfig can honour flag-over-config precedence. Call from PreRunE.
+// Flags().Visit only visits flags that were changed, so the names need not be
+// duplicated here.
+func RecordWebhookChanges(cmd *cobra.Command, cfg *config.WebhookConfig) {
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		if strings.HasPrefix(f.Name, "webhook-") {
+			if cfg.Changed == nil {
+				cfg.Changed = map[string]bool{}
+			}
+			cfg.Changed[f.Name] = true
+		}
+	})
+}
 
 // Default webhook configuration constants
 const (
@@ -46,26 +64,28 @@ func BuildWebhookConfig(cfg *config.WebhookConfig) (map[string]any, error) {
 		return nil, fmt.Errorf("webhook config must be an object/map")
 	}
 
-	// Override with explicit flag values if set (highest precedence)
+	// Explicit flags win (highest precedence), keyed off cfg.Changed so a flag
+	// set to its default value still overrides config. URL/AuthToken have no
+	// default, so a non-empty value also counts as set.
 	if cfg.URL != "" {
 		webhookConf["url"] = cfg.URL
 	}
-	if cfg.Method != "" && cfg.Method != DefaultWebhookMethod {
+	if cfg.Changed["webhook-method"] {
 		webhookConf["method"] = cfg.Method
 	}
-	if cfg.AuthType != "" && cfg.AuthType != DefaultWebhookAuthType {
+	if cfg.Changed["webhook-auth-type"] {
 		webhookConf["auth_type"] = cfg.AuthType
 	}
-	if cfg.AuthToken != "" {
+	if cfg.Changed["webhook-auth-token"] || cfg.AuthToken != "" {
 		webhookConf["auth_token"] = cfg.AuthToken
 	}
-	if cfg.Timeout != "" && cfg.Timeout != DefaultWebhookTimeout {
+	if cfg.Changed["webhook-timeout"] {
 		webhookConf["timeout"] = cfg.Timeout
 	}
-	if cfg.Retries != DefaultWebhookRetries {
+	if cfg.Changed["webhook-retries"] {
 		webhookConf["retries"] = cfg.Retries
 	}
-	if cfg.RetryDelay != "" && cfg.RetryDelay != DefaultWebhookRetryDelay {
+	if cfg.Changed["webhook-retry-delay"] {
 		webhookConf["retry_delay"] = cfg.RetryDelay
 	}
 

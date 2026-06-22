@@ -52,14 +52,10 @@ func TestSuperviseNetworkIsolationUserns(t *testing.T) {
 	assertFileContains(t, cfg.OutputFile, "ok\n")
 }
 
-// TestSuperviseSandboxedNetworkIsolation is the regression guard for the
-// Landlock+userns interaction: Landlock is applied to the supervising parent
-// before it forks a child into a NEW user namespace, and Go writes the child's
-// /proc/<pid>/{setgroups,uid_map,gid_map} from that (now Landlocked) parent.
-// Without the AllowUsernsSetup grant those writes are denied and cmd.Start
-// fails — so combining --landlock with --isolate-network would break entirely.
-// Gated to SKIP unless Landlock enforces, unprivileged userns works, and
-// /output exists (the base sandbox RWDirs requires it).
+// TestSuperviseSandboxedNetworkIsolation guards the Landlock+userns combo:
+// without the AllowUsernsSetup grant the Landlocked parent can't write the
+// child's id-map files and cmd.Start fails. Gated on Landlock + userns +
+// /output (the base sandbox RWDirs requires it).
 func TestSuperviseSandboxedNetworkIsolation(t *testing.T) {
 	if !sandbox.LandlockAvailable() {
 		t.Skip("Landlock not available (ABI < 1): BestEffort no-ops, so the Landlock+userns interaction is not exercised")

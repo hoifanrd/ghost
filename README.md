@@ -81,7 +81,7 @@ ghost supervise --landlock --max-pids=33 --max-output-bytes=1048576 \
 
 ### Sandbox Isolation (legacy `run`)
 
-`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-exec user+network namespace together (Linux only):
+`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-child network namespace (`CLONE_NEWNET`, requires `CAP_SYS_ADMIN`) together (Linux only):
 
 ```bash
 # Restricts filesystem access and isolates network
@@ -184,7 +184,6 @@ Ghost outputs structured JSON to stdout:
 
 - 📖 **[Full Usage Guide](USAGE.md)** - Comprehensive examples and use cases
 - ⚙️ **[Configuration Reference](CONFIG.md)** - All flags and environment variables
-- 🤖 **[Developer Notes](CLAUDE.md)** - Claude Code guidance and project structure
 
 ## License
 
