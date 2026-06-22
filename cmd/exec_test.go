@@ -3,107 +3,58 @@ package cmd
 import (
 	"testing"
 
-	"github.com/zinc-sig/ghost/cmd/config"
+	"github.com/spf13/cobra"
 )
 
-func TestExecFlagValidation(t *testing.T) {
-	tests := []struct {
-		name          string
-		setup         func()
-		wantErr       bool
-		errorContains string
+// TestExecSuperviseSurface guards the subcommand redesign: exec and supervise
+// expose the orthogonal isolation flags (--landlock / --isolate-network) and
+// NOT the legacy bundled --sandbox flag or the grading uploader flags.
+func TestExecSuperviseSurface(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		cmd         *cobra.Command
+		wantFlags   []string
+		unwantFlags []string
 	}{
 		{
-			name: "exec with webhook-url is rejected",
-			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
-				runWebhookConfig.URL = "http://example.com"
-				runUploadConfig.Provider = ""
-			},
-			wantErr:       true,
-			errorContains: "--exec is incompatible with --webhook-url",
+			name:        "exec",
+			cmd:         execCmd,
+			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids", "timeout"},
+			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "result-file", "max-output-bytes"},
 		},
 		{
-			name: "exec with upload-provider is rejected",
-			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = "minio"
-			},
-			wantErr:       true,
-			errorContains: "--exec is incompatible with --upload-provider",
+			name:        "supervise",
+			cmd:         superviseCmd,
+			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids", "timeout", "result-file", "max-output-bytes"},
+			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider"},
 		},
-		{
-			name: "exec with dry-run is rejected",
-			setup: func() {
-				runFlags = config.CommonFlags{Exec: true, DryRun: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
-			},
-			wantErr:       true,
-			errorContains: "--exec is incompatible with --dry-run",
-		},
-		{
-			name: "exec alone is accepted",
-			setup: func() {
-				runFlags = config.CommonFlags{Exec: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
-			},
-			wantErr: false,
-		},
-		{
-			name: "sandbox without exec is accepted",
-			setup: func() {
-				runFlags = config.CommonFlags{Sandbox: true}
-				runWebhookConfig.URL = ""
-				runUploadConfig.Provider = ""
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Save and restore globals
-			savedFlags := runFlags
-			savedWebhook := runWebhookConfig
-			savedUpload := runUploadConfig
-			defer func() {
-				runFlags = savedFlags
-				runWebhookConfig = savedWebhook
-				runUploadConfig = savedUpload
-			}()
-
-			tt.setup()
-
-			// Call the PreRunE validation logic directly
-			err := validateExecFlags()
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for _, f := range c.wantFlags {
+				if c.cmd.Flags().Lookup(f) == nil {
+					t.Errorf("%s: missing expected flag --%s", c.name, f)
 				}
-				if tt.errorContains != "" && !contains(err.Error(), tt.errorContains) {
-					t.Errorf("error %q does not contain %q", err.Error(), tt.errorContains)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
+			}
+			for _, f := range c.unwantFlags {
+				if c.cmd.Flags().Lookup(f) != nil {
+					t.Errorf("%s: unexpected flag --%s present", c.name, f)
 				}
 			}
 		})
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+// TestRunRetainsLegacyFlags confirms run keeps its legacy grading surface
+// (webhook/upload/context/sandbox) after the exec/supervise modes moved off it.
+func TestRunRetainsLegacyFlags(t *testing.T) {
+	for _, f := range []string{"sandbox", "sandbox-workdir", "webhook-url", "upload-provider", "context", "score", "max-pids"} {
+		if runCmd.Flags().Lookup(f) == nil {
+			t.Errorf("run: legacy flag --%s went missing", f)
 		}
 	}
-	return false
+	for _, f := range []string{"exec", "supervise", "result-file", "max-output-bytes", "isolate-network", "landlock"} {
+		if runCmd.Flags().Lookup(f) != nil {
+			t.Errorf("run: flag --%s should no longer be on run", f)
+		}
+	}
 }
