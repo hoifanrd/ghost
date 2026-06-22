@@ -84,7 +84,7 @@ func init() {
 	execCmd.Flags().StringVarP(&execTimeoutStr, "timeout", "t", "", "Timeout duration (e.g., 30s, 2m, 500ms)")
 	execCmd.Flags().BoolVar(&execLandlock, "landlock", false, "Apply Landlock filesystem restrictions before execution")
 	execCmd.Flags().StringVar(&execWorkdir, "workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
-	execCmd.Flags().BoolVar(&execIsolateNetwork, "isolate-network", false, "Create a per-exec network namespace (loopback-only networking)")
+	execCmd.Flags().BoolVar(&execIsolateNetwork, "isolate-network", false, "Unshare a network namespace before exec (loopback-only); requires CAP_SYS_ADMIN — silently no-ops in a capability-dropped container, leaving the container's network in effect")
 	execCmd.Flags().Uint64Var(&execMaxPids, "max-pids", 0, "Maximum number of processes for the current user (includes ghost itself; 0 = no limit)")
 
 	execCmd.PreRunE = func(cmd *cobra.Command, args []string) error {

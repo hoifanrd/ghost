@@ -9,12 +9,79 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/zinc-sig/ghost/internal/output"
 	"github.com/zinc-sig/ghost/internal/sandbox"
 )
+
+// requireUnprivilegedUserns skips a test when this host cannot create an
+// unprivileged user namespace (the mechanism --isolate-network relies on in
+// supervise mode).
+func requireUnprivilegedUserns(t *testing.T) {
+	t.Helper()
+	probe := exec.Command("true")
+	probe.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:  syscall.CLONE_NEWUSER,
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}},
+	}
+	if err := probe.Start(); err != nil {
+		t.Skipf("unprivileged user namespaces unavailable: %v", err)
+	}
+	_ = probe.Wait()
+}
+
+// TestSuperviseNetworkIsolationUserns exercises the supervise userns netns path
+// end to end (no Landlock): the child must start, be waited on correctly, and
+// produce its output. Guards superviseSysProcAttr / the CLONE_NEWUSER fork.
+func TestSuperviseNetworkIsolationUserns(t *testing.T) {
+	requireUnprivilegedUserns(t)
+	dir := t.TempDir()
+	cfg := superviseConfig(dir, "sh", "-c", "echo ok")
+	cfg.IsolateNetwork = true
+	if err := Supervise(cfg); err != nil {
+		t.Fatalf("Supervise with IsolateNetwork: %v", err)
+	}
+	tr := decodeResultFile(t, cfg.ResultFile)
+	if tr.ExitCode != 0 {
+		t.Fatalf("exit_code = %d, want 0 (userns child must start and exit cleanly)", tr.ExitCode)
+	}
+	assertFileContains(t, cfg.OutputFile, "ok\n")
+}
+
+// TestSuperviseSandboxedNetworkIsolation is the regression guard for the
+// Landlock+userns interaction: Landlock is applied to the supervising parent
+// before it forks a child into a NEW user namespace, and Go writes the child's
+// /proc/<pid>/{setgroups,uid_map,gid_map} from that (now Landlocked) parent.
+// Without the AllowUsernsSetup grant those writes are denied and cmd.Start
+// fails — so combining --landlock with --isolate-network would break entirely.
+// Gated to SKIP unless Landlock enforces, unprivileged userns works, and
+// /output exists (the base sandbox RWDirs requires it).
+func TestSuperviseSandboxedNetworkIsolation(t *testing.T) {
+	if !sandbox.LandlockAvailable() {
+		t.Skip("Landlock not available (ABI < 1): BestEffort no-ops, so the Landlock+userns interaction is not exercised")
+	}
+	requireUnprivilegedUserns(t)
+	if _, err := os.Stat("/output"); err != nil {
+		t.Skip("/output not present: base sandbox RWDirs(/output) cannot be applied on this host")
+	}
+	dir := t.TempDir()
+	cfg := superviseConfig(dir, "sh", "-c", "echo ok")
+	cfg.Landlock = true
+	cfg.IsolateNetwork = true
+	cfg.SandboxWorkDir = dir
+	if err := Supervise(cfg); err != nil {
+		t.Fatalf("Supervise with Landlock+IsolateNetwork: %v", err)
+	}
+	tr := decodeResultFile(t, cfg.ResultFile)
+	if tr.ExitCode != 0 {
+		t.Fatalf("exit_code = %d, want 0 (child must start under Landlock+userns)", tr.ExitCode)
+	}
+	assertFileContains(t, cfg.OutputFile, "ok\n")
+}
 
 // decodeResultFile reads and JSON-decodes the supervise result file (the
 // primary Docker transport — plain JSON, no frame sentinels).

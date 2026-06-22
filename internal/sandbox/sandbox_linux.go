@@ -10,25 +10,58 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// ApplySandbox applies Landlock filesystem restrictions.
-// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd,
-// /sys/fs/cgroup (ignored if missing — supervise's peak/OOM sampler reads it).
+// SandboxOpts enables Landlock grants beyond the base ruleset. They are opt-in
+// because they widen the sandbox: the base posture (exec mode) needs neither,
+// while supervise needs one or both depending on how it measures and isolates.
+type SandboxOpts struct {
+	// AllowCgroupRead grants RO access to /sys/fs/cgroup so supervise's
+	// in-process sampler and baseline/final reads of memory.current/peak/events
+	// succeed after Landlock is applied. exec mode does not read cgroup files,
+	// so it leaves this off and keeps /sys/fs/cgroup unreadable to the child.
+	AllowCgroupRead bool
+
+	// AllowUsernsSetup grants the narrow /proc file access the parent needs to
+	// write a forked child's setgroups/uid_map/gid_map when isolating the
+	// network via a new user namespace AFTER Landlock is in force. Go's runtime
+	// performs those writes from the (now Landlocked) parent; without this grant
+	// the kernel denies them and the userns child fails to start. The grant is
+	// RWFiles (read+write existing files, no dir create/delete) and is
+	// DAC-bounded, so the inheriting child gains no meaningful new capability.
+	AllowUsernsSetup bool
+}
+
+// ApplySandbox applies the base Landlock filesystem restrictions.
+// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd.
 // Read-write: /output, /tmp, /dev, and the given work directory.
 func ApplySandbox(workDir string) error {
+	return ApplySandboxWith(workDir, SandboxOpts{})
+}
+
+// ApplySandboxWith applies the base Landlock restrictions (see ApplySandbox)
+// plus any grants enabled in opts. Supervise uses it to additionally read
+// cgroup memory files and, when isolating the network, to set up the child's
+// user namespace after Landlock has been applied to the supervising parent.
+func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	if workDir == "" {
 		return fmt.Errorf("sandbox: workDir must not be empty")
 	}
 
-	err := landlock.V5.BestEffort().RestrictPaths(
+	rules := []landlock.Rule{
 		landlock.RODirs("/usr", "/bin", "/lib", "/lib64", "/etc").IgnoreIfMissing(),
 		landlock.RODirs("/proc/self/fd"),
-		// /sys/fs/cgroup must stay readable so supervise's in-process sampler and
-		// baseline/final reads of memory.current/peak/events succeed after
-		// Landlock is applied. RO + IgnoreIfMissing for non-cgroup-v2 hosts.
-		landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing(),
 		landlock.RWDirs("/output", "/tmp", "/dev", workDir),
-	)
-	if err != nil {
+	}
+	if opts.AllowCgroupRead {
+		// RO + IgnoreIfMissing for non-cgroup-v2 hosts.
+		rules = append(rules, landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing())
+	}
+	if opts.AllowUsernsSetup {
+		// The parent writes /proc/<child>/{setgroups,uid_map,gid_map}; Go opens
+		// these existing files read+write, so WRITE_FILE alone is insufficient.
+		rules = append(rules, landlock.RWFiles("/proc"))
+	}
+
+	if err := landlock.V5.BestEffort().RestrictPaths(rules...); err != nil {
 		return fmt.Errorf("sandbox: landlock restrict paths: %w", err)
 	}
 	return nil
