@@ -47,12 +47,14 @@ func TestExecSuperviseSurface(t *testing.T) {
 // TestRunRetainsLegacyFlags confirms run keeps its legacy grading surface
 // (webhook/upload/context/sandbox) after the exec/supervise modes moved off it.
 func TestRunRetainsLegacyFlags(t *testing.T) {
-	for _, f := range []string{"sandbox", "sandbox-workdir", "webhook-url", "upload-provider", "context", "score", "max-pids"} {
+	for _, f := range []string{"sandbox", "sandbox-workdir", "webhook-url", "upload-provider", "context", "score"} {
 		if runCmd.Flags().Lookup(f) == nil {
 			t.Errorf("run: legacy flag --%s went missing", f)
 		}
 	}
-	for _, f := range []string{"exec", "supervise", "result-file", "max-output-bytes", "isolate-network", "landlock"} {
+	// --max-pids was only enforced by exec/supervise; run never applied it, so it
+	// is no longer advertised on run (would be a silent no-op).
+	for _, f := range []string{"exec", "supervise", "result-file", "max-output-bytes", "isolate-network", "landlock", "max-pids"} {
 		if runCmd.Flags().Lookup(f) != nil {
 			t.Errorf("run: flag --%s should no longer be on run", f)
 		}

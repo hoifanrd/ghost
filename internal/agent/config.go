@@ -3,7 +3,7 @@
 // queue, serves exactly two activities (fetch-submission and run-exec),
 // and runs each command in a sandboxed child process. The agent itself
 // is never sandboxed — Landlock and RLIMIT_NPROC are process-wide and
-// irreversible, so they are applied by the child (`ghost run --exec`)
+// irreversible, so they are applied by the child (`ghost exec`)
 // just before execve.
 package agent
 
@@ -86,7 +86,7 @@ type Config struct {
 	MaxConcurrentExecs int
 
 	// GhostPath is the ghost binary spawned as the sandboxed child
-	// (`ghost run --exec ...`). Defaults to the running executable;
+	// (`ghost exec ...`). Defaults to the running executable;
 	// overridden in tests.
 	GhostPath string
 

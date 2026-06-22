@@ -155,7 +155,6 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		Timeout:        runFlags.Timeout,
 		Sandbox:        runFlags.Sandbox,
 		SandboxWorkDir: runFlags.SandboxWorkDir,
-		MaxPids:        runFlags.MaxPids,
 	}
 
 	result, err := runner.Execute(config)

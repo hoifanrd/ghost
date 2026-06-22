@@ -5,11 +5,14 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
 ## Table of Contents
 
 - [Command Syntax](#command-syntax)
+  - [Exec Command](#exec-command)
+  - [Supervise Command](#supervise-command)
   - [Agent Command](#agent-command)
 - [Basic Usage](#basic-usage)
   - [Heartbeat (Container Keepalive)](#heartbeat-container-keepalive)
 - [Advanced Features](#advanced-features)
-  - [Sandbox Isolation](#sandbox-isolation)
+  - [Isolation Flags](#isolation-flags)
+  - [Sandbox Isolation (legacy run)](#sandbox-isolation-legacy-run)
   - [Supervise Mode](#supervise-mode)
 - [Common Use Cases](#common-use-cases)
 - [JSON Output Reference](#json-output-reference)
@@ -23,7 +26,23 @@ Comprehensive examples and patterns for using Ghost in various scenarios.
 ghost run [flags] -- <command> [args...]
 ```
 
-The `--` separator is **required** to distinguish Ghost flags from the target command and its arguments.
+The `--` separator is **required** to distinguish Ghost flags from the target command and its arguments. `run` is the legacy command that emits JSON and supports webhooks, uploads, context, and `--score`. For low-overhead or measured execution, use `exec` or `supervise` below.
+
+### Exec Command
+
+```
+ghost exec [flags] -- <command> [args...]
+```
+
+Replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. Filesystem and network isolation are two independent flags: `--landlock` (Landlock filesystem restrictions only) and `--isolate-network` (a per-exec network namespace, loopback-only). Either can be passed alone. `--workdir` sets the working directory for Landlock read-write rules, and `--max-pids` caps processes via `RLIMIT_NPROC` (includes ghost itself; 0 = no limit).
+
+### Supervise Command
+
+```
+ghost supervise [flags] -- <command> [args...]
+```
+
+Forks the command and keeps ghost alive to measure it (peak memory, OOM attribution, output-size cap), then writes a result trailer to `--result-file` and as a stream frame on stdout. ghost survives the child. It shares `--landlock`, `--isolate-network`, `--workdir`, `--max-pids`, and `--timeout` with `exec`, and adds `--max-output-bytes` and `--result-file`. On `supervise`, `--isolate-network` creates a per-exec **user+network** namespace. See [Supervise Mode](#supervise-mode).
 
 ### Diff Command
 
@@ -47,7 +66,7 @@ Runs as PID 1 in a container, writing timestamps for liveness detection and reap
 ghost agent
 ```
 
-Runs ghost in agent mode (RFD 0015 grading runtime): a long-lived Temporal worker inside a grading container. The agent joins a per-run task queue and serves exactly two activities — `ghost-fetch-submission` (downloads the run's inputs into the workspace) and `ghost-run-exec` (runs one resolved exec spec). Each command is executed in a sandboxed **child** process via `ghost run --exec --sandbox --max-pids=N`; the agent process itself is never sandboxed because Landlock and `RLIMIT_NPROC` are process-wide and irreversible. When the agent is PID 1 it also reaps zombies.
+Runs ghost in agent mode (RFD 0015 grading runtime): a long-lived Temporal worker inside a grading container. The agent joins a per-run task queue and serves exactly two activities — `ghost-fetch-submission` (downloads the run's inputs into the workspace) and `ghost-run-exec` (runs one resolved exec spec). Each command is executed in a sandboxed **child** process via `ghost exec --landlock --workdir <wd> --isolate-network --max-pids=N`; the agent process itself is never sandboxed because Landlock and `RLIMIT_NPROC` are process-wide and irreversible. When the agent is PID 1 it also reaps zombies.
 
 The wire contract (activity names, payload shapes, protocol version) is frozen in `internal/agent/contract`. Agent mode has no flags; everything is configured through `GHOST_AGENT_*` environment variables injected by the runner backend at dispatch. The agent strips **every** `GHOST_AGENT_*` variable from the environment of the commands it spawns, so credentials never reach student code.
 
@@ -66,9 +85,10 @@ The wire contract (activity names, payload shapes, protocol version) is frozen i
 | `GHOST_AGENT_STAGING_DIR` | no | fresh 0700 temp dir | Agent-owned staging area for stdin materialisation and stdio captures (never world-writable) |
 | `GHOST_AGENT_DEFAULT_TIMEOUT` | no | `60s` | Exec timeout when a spec's `timeout_ms` is 0 (Go duration) |
 | `GHOST_AGENT_MAX_PIDS` | no | `32` | `RLIMIT_NPROC` applied by the child before execve (0 disables) |
-| `GHOST_AGENT_SANDBOX` | no | `true` | Landlock + network namespace isolation of the child (disable only where the kernel lacks support, e.g. tests) |
+| `GHOST_AGENT_SANDBOX` | no | `true` | When true, the child runs with `--landlock` + `--isolate-network` (disable only where the kernel lacks support, e.g. tests) |
+| `GHOST_AGENT_MAX_CONCURRENT_EXECS` | no | `4` | Activities the worker runs at once in this container (0 falls back to the default) |
 
-The first ten names are part of the frozen contract (`contract.Env*` consts); the last four are agent-internal knobs that share the prefix so they are scrubbed alongside the credentials.
+The first ten names are part of the frozen contract (`contract.Env*` consts); the last five are agent-internal knobs that share the prefix so they are scrubbed alongside the credentials.
 
 ```bash
 # Typical container entrypoint
@@ -135,9 +155,35 @@ On Linux, when a process dies its parent must call `wait()` to clear it from the
 
 ## Advanced Features
 
-### Sandbox Isolation
+### Isolation Flags
 
-Run commands with Landlock filesystem restrictions and network namespace isolation (Linux only):
+`exec` and `supervise` expose two **independent** isolation flags (Linux only); either may be passed alone:
+
+- `--landlock` — apply Landlock filesystem restrictions only (no namespaces). `--workdir` sets the read-write working directory.
+- `--isolate-network` — create a per-exec network namespace with loopback-only networking. On `supervise` this is a user+network namespace (`CLONE_NEWUSER | CLONE_NEWNET`); on `exec` it is a per-exec network namespace.
+
+```bash
+# Landlock filesystem restrictions only
+ghost exec --landlock --workdir /workspace \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
+
+# Landlock + per-exec network namespace; this is what the grading agent runs
+# per exec spec when GHOST_AGENT_SANDBOX is on
+ghost exec --landlock --workdir /workspace --isolate-network --max-pids=33 \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+
+# Network isolation alone, no Landlock
+ghost exec --isolate-network \
+  -i /dev/null -o /output/stdout -e /output/stderr -- ./command
+```
+
+Landlock filesystem rules:
+- **Read-only**: `/usr`, `/bin`, `/lib`, `/lib64`, `/etc`
+- **Read-write**: `/output`, `/tmp`, and `--workdir`
+
+### Sandbox Isolation (legacy run)
+
+`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-exec user+network namespace together. Its working directory flag is `--sandbox-workdir` (Linux only):
 
 ```bash
 # Basic sandbox — restricts filesystem access and isolates network
@@ -146,32 +192,23 @@ ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrus
 # Custom working directory for read-write access
 ghost run --sandbox --sandbox-workdir /workspace \
   -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
-
-# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
-ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
-
-# Limit processes to prevent fork bombs (requires --exec)
-# Ghost uses 1 slot, leaving 32 for the student command and its children
-ghost run --exec --sandbox --max-pids=33 \
-  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
 
-Sandbox filesystem rules:
-- **Read-only**: `/usr`, `/bin`, `/lib`, `/lib64`, `/etc`
-- **Read-write**: `/output`, `/tmp`, and the sandbox working directory
+`run` does not support `--exec`, `--supervise`, `--landlock`, `--isolate-network`, `--max-pids`, `--max-output-bytes`, or `--result-file` — use `exec` or `supervise` for those.
 
 ### Supervise Mode
 
-Supervise mode (`--supervise`) is the in-container measurement wrapper for the
-multi-backend sandbox. Unlike `--exec` (which replaces the ghost process via
+The `ghost supervise` command is the in-container measurement wrapper for the
+multi-backend sandbox. Unlike `ghost exec` (which replaces the ghost process via
 `execve` and emits nothing), supervise **forks** the command and keeps ghost
 alive alongside it to measure peak memory, attribute OOM kills, enforce the
 output-size cap as bytes are written, and emit a structured result trailer when
 the command finishes.
 
 ```bash
-# Fork the command, measure it, and write a result trailer
-ghost run --supervise --sandbox --max-pids=33 \
+# The core sandbox executor backend runs a no-network container, so it uses
+# --landlock only (the netns clone is blocked by seccomp and unneeded)
+ghost supervise --landlock --max-pids=33 \
   --max-output-bytes=1048576 \
   --result-file=/output/.result \
   -i /dev/null -o /output/stdout -e /output/stderr \
@@ -179,7 +216,6 @@ ghost run --supervise --sandbox --max-pids=33 \
 ```
 
 Supervise-specific flags:
-- `--supervise` — enable supervise mode (mutually exclusive with `--exec`).
 - `--max-output-bytes` — total `/output` byte cap (stdout + stderr combined),
   enforced at write time. Default `1048576` (1 MiB). Excess bytes are dropped
   and the trailer's `truncated` flag is set; the child is never killed for
@@ -187,17 +223,18 @@ Supervise-specific flags:
 - `--result-file` — where the result trailer JSON is written. Default
   `/output/.result`.
 
-`--supervise` is compatible with `--sandbox`, `--sandbox-workdir`, `--max-pids`,
-and `--timeout`, and (like `--exec`) is incompatible with `--webhook-url`,
-`--upload-provider`, and `--dry-run`.
+supervise also accepts the shared `--landlock`, `--isolate-network`,
+`--workdir`, `--max-pids`, and `--timeout` flags. It emits no JSON, webhooks, or
+uploads — only the result trailer (file + stream frame).
 
-**Child isolation.** With `--sandbox`, the forked child is placed in a new
-user + network namespace (`CLONE_NEWUSER | CLONE_NEWNET`, UID/GID mapped to the
-current user). The user namespace lets an unprivileged container create the
+**Child isolation.** With `--isolate-network`, the forked child is placed in a
+new user + network namespace (`CLONE_NEWUSER | CLONE_NEWNET`, UID/GID mapped to
+the current user). The user namespace lets an unprivileged container create the
 network namespace, so the child gets loopback-only networking even without
 `CAP_SYS_ADMIN`. If unprivileged user namespaces are disabled on the host, the
 command **hard-fails** with a clear error rather than silently leaking the host
-network.
+network. `--landlock` is independent and may be passed with or without
+`--isolate-network`.
 
 **Timeout.** When `--timeout` is set, supervise enforces it by sending
 `SIGTERM` to the child's process group, then `SIGKILL` after a grace period. On
