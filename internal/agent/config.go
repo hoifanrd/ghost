@@ -34,9 +34,9 @@ const (
 	// EnvMaxPids is the RLIMIT_NPROC value the child applies before
 	// execve (default 32; 0 disables the limit).
 	EnvMaxPids = "GHOST_AGENT_MAX_PIDS"
-	// EnvSandbox toggles Landlock/netns sandboxing of the child
+	// EnvSandbox toggles Landlock filesystem sandboxing of the child
 	// (default true; only disabled in test environments where Landlock
-	// or network namespaces are unavailable).
+	// is unavailable).
 	EnvSandbox = "GHOST_AGENT_SANDBOX"
 	// EnvMaxConcurrentExecs bounds how many activities the worker runs at
 	// once in this container (default 4; 0 falls back to the default).

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -70,25 +71,21 @@ func Supervise(config *Config) error {
 	cmd.Stdout = newCappedWriter(outFile, budget)
 	cmd.Stderr = newCappedWriter(errFile, budget)
 
-	// Child isolation: Landlock and the user+network namespace are now
-	// orthogonal (§7). Setpgid lets the timeout escalation signal the whole
-	// process group.
+	// Child isolation: Landlock filesystem restrictions only. Network
+	// isolation is the container/cluster's responsibility (egress
+	// NetworkPolicy), not ghost's. Setpgid lets the timeout escalation signal
+	// the whole process group.
 	if config.Landlock {
-		// Apply Landlock to the parent before fork; it is inherited by the
-		// child. /output stays RW (RWDirs includes it), so the trailer write
-		// below is permitted.
-		if err := sandbox.ApplySandbox(config.SandboxWorkDir); err != nil {
+		// Applied to the parent pre-fork and inherited by the child. Supervise
+		// also needs cgroup reads (sampling); scoped here, not in exec's base
+		// sandbox.
+		if err := sandbox.ApplySandboxWith(config.SandboxWorkDir, sandbox.SandboxOpts{
+			AllowCgroupRead: true,
+		}); err != nil {
 			return fmt.Errorf("supervise: %w", err)
 		}
 	}
-	if config.IsolateNetwork {
-		// userns netns: CLONE_NEWUSER|CLONE_NEWNET. Only created when network
-		// isolation is requested — without it ghost never calls
-		// clone(CLONE_NEWUSER), which the sandbox seccomp profile blocks.
-		cmd.SysProcAttr = superviseSysProcAttr()
-	} else {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// §12.7: supervise enforces its own timeout as a SIGTERM→delay→SIGKILL
 	// escalation on the child's process group; core remains the backstop.
@@ -135,12 +132,6 @@ func Supervise(config *Config) error {
 	startTime := time.Now()
 	if err := cmd.Start(); err != nil {
 		sampler.stop()
-		// §12.4 resolved: hard-fail with a clear error if userns creation
-		// EPERMs — no silent fall back to bare CLONE_NEWNET (network leak).
-		if config.IsolateNetwork && errors.Is(err, syscall.EPERM) {
-			return fmt.Errorf("supervise: failed to create user namespace for network isolation "+
-				"(unprivileged user namespaces may be disabled on this host): %w", err)
-		}
 		return fmt.Errorf("supervise: failed to start command: %w", err)
 	}
 
@@ -204,6 +195,11 @@ func writeTrailer(resultFile string, t output.Trailer) error {
 		return fmt.Errorf("supervise: marshal trailer: %w", err)
 	}
 	if resultFile != "" {
+		// Create the parent dir (--result-file is user-configurable), matching
+		// the createFileWithDir handling of stdout/stderr.
+		if err := os.MkdirAll(filepath.Dir(resultFile), 0o755); err != nil {
+			return fmt.Errorf("supervise: create result dir for %s: %w", resultFile, err)
+		}
 		if err := os.WriteFile(resultFile, data, 0644); err != nil {
 			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
 		}
@@ -218,30 +214,15 @@ func writeTrailer(resultFile string, t output.Trailer) error {
 	return nil
 }
 
-// superviseSysProcAttr returns SysProcAttr creating a new user + network
-// namespace for the child. CLONE_NEWUSER lets an unprivileged process create
-// the netns (the new userns grants CAP_SYS_ADMIN within itself), giving the
-// child loopback-only networking even without container CAP_SYS_ADMIN.
-// UID/GID 0→current mapping preserves file ownership at the executor's UID.
-// Adopted from zinc's executor (sandboxSysProcAttr).
-func superviseSysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{
-		Setpgid:    true,
-		Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
-		UidMappings: []syscall.SysProcIDMap{
-			{ContainerID: 0, HostID: os.Getuid(), Size: 1},
-		},
-		GidMappings: []syscall.SysProcIDMap{
-			{ContainerID: 0, HostID: os.Getgid(), Size: 1},
-		},
-	}
-}
-
 // resolvePeak picks the per-execution peak in sampling mode (ported verbatim
 // from core's monitor). /sys/fs/cgroup is read-only inside the container so
 // ghost can never reset memory.peak: a watermark risen above the baseline was
 // set during this exec and is exact; otherwise the sampled maximum is the best
 // per-exec estimate (never an over-report).
+//
+// NOTE: this is the whole-cgroup watermark and includes ghost's own footprint
+// (it shares the child's cgroup) — a per-cgroup peak, matching what core reads.
+// Changing the attribution is a coordinated ghost+core change (frozen contract).
 func resolvePeak(baseline, watermark, sampled int64) int64 {
 	if watermark > baseline {
 		return watermark

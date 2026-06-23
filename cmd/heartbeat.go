@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -72,6 +73,10 @@ func heartbeatCommand(cmd *cobra.Command, args []string) error {
 }
 
 func writeHeartbeat(path string) error {
+	// Create parent dirs so a nested --file path works (matches run/supervise).
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	return os.WriteFile(path, []byte(ts), 0644)
 }

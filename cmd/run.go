@@ -250,6 +250,7 @@ func init() {
 		}
 
 		// Parse webhook configuration
+		helpers.RecordWebhookChanges(cmd, &runWebhookConfig)
 		if err := helpers.ParseWebhookConfig(&runWebhookConfig, true); err != nil {
 			return err
 		}

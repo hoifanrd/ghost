@@ -85,6 +85,21 @@ func TestSuperviseExitCode(t *testing.T) {
 	}
 }
 
+func TestSuperviseCreatesResultFileDir(t *testing.T) {
+	dir := t.TempDir()
+	cfg := superviseConfig(dir, "sh", "-c", "echo hi")
+	// Point --result-file at a not-yet-existing nested directory; writeTrailer
+	// must create it (like stdout/stderr) rather than failing with ENOENT.
+	cfg.ResultFile = filepath.Join(dir, "nested", "sub", ".result")
+	if err := Supervise(cfg); err != nil {
+		t.Fatalf("Supervise: %v", err)
+	}
+	tr := decodeResultFile(t, cfg.ResultFile)
+	if tr.ExitCode != 0 {
+		t.Errorf("exit_code = %d, want 0", tr.ExitCode)
+	}
+}
+
 func TestSuperviseTruncatesOutput(t *testing.T) {
 	dir := t.TempDir()
 	cfg := superviseConfig(dir, "sh", "-c", "head -c 100 /dev/zero | tr '\\0' 'a'")

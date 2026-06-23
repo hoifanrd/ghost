@@ -3,7 +3,6 @@
 package runner
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,22 +42,11 @@ func ExecuteExec(config *Config) error {
 		return fmt.Errorf("exec: dup3 stderr: %w", err)
 	}
 
-	// Apply Landlock filesystem restrictions if requested (independent of
-	// network isolation).
+	// Apply Landlock filesystem restrictions if requested. Network isolation
+	// is the container/cluster's responsibility (egress NetworkPolicy), not
+	// ghost's.
 	if config.Landlock {
 		if err := sandbox.ApplySandbox(config.SandboxWorkDir); err != nil {
-			return fmt.Errorf("exec: %w", err)
-		}
-	}
-
-	// Create the per-exec network namespace only when requested. Without it
-	// ghost never calls unshare(CLONE_NEWNET).
-	if config.IsolateNetwork {
-		// A capability-dropped container cannot create a netns
-		// (ErrNetworkIsolationUnsupported); that is non-fatal — egress is
-		// then the container/cluster's responsibility, surfaced by the
-		// agent at boot. Any other unshare error is a real failure.
-		if err := sandbox.IsolateNetwork(); err != nil && !errors.Is(err, sandbox.ErrNetworkIsolationUnsupported) {
 			return fmt.Errorf("exec: %w", err)
 		}
 	}

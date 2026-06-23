@@ -25,15 +25,13 @@ func Run(cfg *Config) error {
 	}
 
 	if cfg.Sandbox {
-		// Operational posture (RFD 0015 Decision 9/10): per-exec network
-		// isolation via unshare(CLONE_NEWNET) needs CAP_SYS_ADMIN, which
-		// a hardened grading container drops. When that is the case the
-		// student command shares this container's network namespace —
-		// including the egress the agent needs for Temporal/object
-		// storage — so egress MUST be restricted by a container/cluster
-		// network policy (deny-egress except the required endpoints).
-		// The per-exec sandbox does not, and cannot, provide this.
-		fmt.Fprintln(os.Stderr, "ghost agent: per-exec network isolation requires CAP_SYS_ADMIN; if the container drops it, restrict egress with a container/cluster network policy (RFD 0015 Decision 9/10, Phase 8)")
+		// Operational posture (RFD 0015 Decision 9/10): ghost does not
+		// isolate the network. The student command shares this container's
+		// network namespace — including the egress the agent needs for
+		// Temporal/object storage — so egress MUST be restricted by the
+		// container/cluster via NetworkMode/NetworkPolicy (deny-egress
+		// except the required endpoints).
+		fmt.Fprintln(os.Stderr, "ghost agent: ghost does not isolate the network; the container/cluster must restrict egress via NetworkMode/NetworkPolicy (deny-egress except Temporal/object storage)")
 	}
 
 	opts := client.Options{

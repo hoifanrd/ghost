@@ -14,11 +14,9 @@ var (
 	execOutputFile string
 	execStderrFile string
 
-	execTimeoutStr     string
-	execLandlock       bool
-	execWorkdir        string
-	execIsolateNetwork bool
-	execMaxPids        uint64
+	execLandlock bool
+	execWorkdir  string
+	execMaxPids  uint64
 )
 
 var execCmd = &cobra.Command{
@@ -28,12 +26,13 @@ var execCmd = &cobra.Command{
 redirecting stdin/stdout/stderr. No JSON output, webhooks, or uploads — the
 process is replaced and the command's exit status is ghost's.
 
-Landlock filesystem restrictions (--landlock) and per-exec network isolation
-(--isolate-network) are independent: pass each only as needed.
+Landlock filesystem restrictions (--landlock) are applied as needed. Network
+isolation is the container/cluster's responsibility (egress NetworkPolicy), not
+ghost's.
 
 The '--' separator is required to distinguish ghost flags from the target command.`,
 	Example: `  ghost exec -i input.txt -o output.txt -e error.log -- ./my-command arg1
-  ghost exec --landlock --isolate-network -i /dev/null -o out -e err -- ./prog`,
+  ghost exec --landlock -i /dev/null -o out -e err -- ./prog`,
 	RunE: execCommand,
 }
 
@@ -51,21 +50,14 @@ func execCommand(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	timeout, err := helpers.ParseTimeout(execTimeoutStr)
-	if err != nil {
-		return err
-	}
-
 	config := &runner.Config{
 		Command:        args[0],
 		Args:           args[1:],
 		InputFile:      execInputFile,
 		OutputFile:     execOutputFile,
 		StderrFile:     execStderrFile,
-		Timeout:        timeout,
 		Exec:           true,
 		Landlock:       execLandlock,
-		IsolateNetwork: execIsolateNetwork,
 		SandboxWorkDir: execWorkdir,
 		MaxPids:        execMaxPids,
 	}
@@ -81,10 +73,10 @@ func init() {
 	_ = execCmd.MarkFlagRequired("output")
 	_ = execCmd.MarkFlagRequired("stderr")
 
-	execCmd.Flags().StringVarP(&execTimeoutStr, "timeout", "t", "", "Timeout duration (e.g., 30s, 2m, 500ms)")
+	// No --timeout: exec replaces the process via execve, so no parent survives
+	// to enforce a deadline — use supervise when a timeout is needed.
 	execCmd.Flags().BoolVar(&execLandlock, "landlock", false, "Apply Landlock filesystem restrictions before execution")
 	execCmd.Flags().StringVar(&execWorkdir, "workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
-	execCmd.Flags().BoolVar(&execIsolateNetwork, "isolate-network", false, "Create a per-exec network namespace (loopback-only networking)")
 	execCmd.Flags().Uint64Var(&execMaxPids, "max-pids", 0, "Maximum number of processes for the current user (includes ghost itself; 0 = no limit)")
 
 	execCmd.PreRunE = func(cmd *cobra.Command, args []string) error {

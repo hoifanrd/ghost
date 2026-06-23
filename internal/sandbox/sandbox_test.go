@@ -25,15 +25,3 @@ func TestApplySandboxValidWorkDir(t *testing.T) {
 	// (kernel too old, etc.) — the test verifies no panic.
 	_ = err
 }
-
-func TestIsolateNetwork(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("network isolation is a no-op on non-Linux")
-	}
-
-	// CLONE_NEWNET requires CAP_SYS_ADMIN or user namespace.
-	// In unprivileged test environments this returns EPERM, which is expected.
-	err := IsolateNetwork()
-	// We accept both nil and EPERM — the test verifies no panic.
-	_ = err
-}

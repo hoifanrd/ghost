@@ -10,25 +10,39 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// ApplySandbox applies Landlock filesystem restrictions.
-// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd,
-// /sys/fs/cgroup (ignored if missing — supervise's peak/OOM sampler reads it).
+// SandboxOpts enables opt-in Landlock grants that supervise needs beyond the
+// base ruleset used by exec.
+type SandboxOpts struct {
+	// AllowCgroupRead grants RO /sys/fs/cgroup so supervise's sampler can read
+	// memory.current/peak/events after Landlock is applied.
+	AllowCgroupRead bool
+}
+
+// ApplySandbox applies the base Landlock filesystem restrictions.
+// Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd.
 // Read-write: /output, /tmp, /dev, and the given work directory.
 func ApplySandbox(workDir string) error {
+	return ApplySandboxWith(workDir, SandboxOpts{})
+}
+
+// ApplySandboxWith applies the base Landlock restrictions (see ApplySandbox)
+// plus any grants enabled in opts.
+func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	if workDir == "" {
 		return fmt.Errorf("sandbox: workDir must not be empty")
 	}
 
-	err := landlock.V5.BestEffort().RestrictPaths(
+	rules := []landlock.Rule{
 		landlock.RODirs("/usr", "/bin", "/lib", "/lib64", "/etc").IgnoreIfMissing(),
 		landlock.RODirs("/proc/self/fd"),
-		// /sys/fs/cgroup must stay readable so supervise's in-process sampler and
-		// baseline/final reads of memory.current/peak/events succeed after
-		// Landlock is applied. RO + IgnoreIfMissing for non-cgroup-v2 hosts.
-		landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing(),
 		landlock.RWDirs("/output", "/tmp", "/dev", workDir),
-	)
-	if err != nil {
+	}
+	if opts.AllowCgroupRead {
+		// RO + IgnoreIfMissing for non-cgroup-v2 hosts.
+		rules = append(rules, landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing())
+	}
+
+	if err := landlock.V5.BestEffort().RestrictPaths(rules...); err != nil {
 		return fmt.Errorf("sandbox: landlock restrict paths: %w", err)
 	}
 	return nil

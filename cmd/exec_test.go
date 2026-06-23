@@ -7,8 +7,8 @@ import (
 )
 
 // TestExecSuperviseSurface guards the subcommand redesign: exec and supervise
-// expose the orthogonal isolation flags (--landlock / --isolate-network) and
-// NOT the legacy bundled --sandbox flag or the grading uploader flags.
+// expose the --landlock isolation flag and NOT the legacy bundled --sandbox
+// flag or the grading uploader flags.
 func TestExecSuperviseSurface(t *testing.T) {
 	for _, c := range []struct {
 		name        string
@@ -17,16 +17,19 @@ func TestExecSuperviseSurface(t *testing.T) {
 		unwantFlags []string
 	}{
 		{
-			name:        "exec",
-			cmd:         execCmd,
-			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids", "timeout"},
-			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "result-file", "max-output-bytes"},
+			name: "exec",
+			cmd:  execCmd,
+			// No --timeout: exec replaces the process via execve, so no parent
+			// survives to enforce a deadline (it was a silent no-op). supervise
+			// keeps --timeout because it forks and waits.
+			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "max-pids"},
+			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "result-file", "max-output-bytes", "timeout", "isolate-network"},
 		},
 		{
 			name:        "supervise",
 			cmd:         superviseCmd,
-			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "isolate-network", "max-pids", "timeout", "result-file", "max-output-bytes"},
-			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider"},
+			wantFlags:   []string{"input", "output", "stderr", "landlock", "workdir", "max-pids", "timeout", "result-file", "max-output-bytes"},
+			unwantFlags: []string{"sandbox", "sandbox-workdir", "supervise", "exec", "webhook-url", "upload-provider", "isolate-network"},
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
