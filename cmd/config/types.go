@@ -27,9 +27,7 @@ type CommonFlags struct {
 	Score          string
 	ScoreSet       bool
 	Sandbox        bool
-	Exec           bool
 	SandboxWorkDir string
-	MaxPids        uint64
 }
 
 // WebhookConfig holds webhook-related flags
@@ -47,4 +45,8 @@ type WebhookConfig struct {
 	Config     string   // JSON string configuration
 	ConfigKV   []string // Key-value pairs
 	ConfigFile string   // Path to JSON config file
+
+	// Changed marks which direct webhook flags were explicitly set, so a flag
+	// overrides config even when its value equals the default. Set in PreRunE.
+	Changed map[string]bool
 }

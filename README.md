@@ -49,24 +49,49 @@ ghost run -i /dev/null -o output.txt -e stderr.txt --score 100 -- python script.
 ghost run -i input.txt -o output.txt -e stderr.txt --timeout 30s -- ./slow-command
 ```
 
-### Sandbox Isolation
+### Exec a Command
 
-Run commands with Landlock filesystem restrictions and network namespace isolation (Linux only):
+`ghost exec` replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. The `--landlock` flag applies filesystem isolation. Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's.
 
 ```bash
-# Run with sandbox — restricts filesystem access and isolates network
-ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrusted-command
+# Basic exec — zero overhead, no JSON output
+ghost exec -i /dev/null -o /output/stdout -e /output/stderr -- ./command
 
-# Specify a custom working directory for read-write access
-ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
+# Landlock filesystem restrictions only
+ghost exec --landlock --workdir /workspace \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Exec mode — replaces the ghost process entirely (zero overhead, no JSON output)
-ghost run --exec --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./command
-
-# Limit processes to prevent fork bombs (requires --exec)
-ghost run --exec --sandbox --max-pids=33 \
+# Landlock + a process-count cap; this is what the grading agent uses for
+# each exec spec
+ghost exec --landlock --workdir /workspace --max-pids=33 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
+
+### Supervise a Command
+
+`ghost supervise` forks the command and keeps ghost alive to measure peak memory, attribute OOM kills, enforce an output-size cap at write time, and emit a result trailer to a result file and as a stream frame on stdout. ghost survives the child. The measurement wrapper for the multi-backend sandbox. See [USAGE.md](USAGE.md#supervise-mode).
+
+```bash
+# The core sandbox executor backend runs a no-network container, so it uses
+# --landlock only; egress is restricted by the container/cluster
+ghost supervise --landlock --max-pids=33 --max-output-bytes=1048576 \
+  --result-file=/output/.result \
+  -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
+```
+
+### Sandbox Isolation (legacy `run`)
+
+`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions (Linux only). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's.
+
+```bash
+# Restricts filesystem access
+ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrusted-command
+
+# Custom working directory for read-write access
+ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
+```
+
+For the `--landlock` flag, use `exec` or `supervise` instead.
 
 ### Heartbeat (Container Keepalive)
 
@@ -149,16 +174,16 @@ Ghost outputs structured JSON to stdout:
 - 🔍 **File comparison** - Built-in diff with structured output
 - ⏳ **Timeout support** - Automatic process termination
 - 🔧 **Environment configuration** - Configure via environment variables
-- 🔒 **Sandbox isolation** - Landlock filesystem restrictions + network namespace isolation (Linux)
-- 🛡️ **Process limiting** - RLIMIT_NPROC enforcement to prevent fork bombs
-- 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec`
+- 🔒 **Isolation** - `--landlock` (filesystem) flag on `exec`/`supervise`; `--sandbox` (Landlock) on legacy `run` (Linux). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's
+- 🛡️ **Process limiting** - RLIMIT_NPROC enforcement to prevent fork bombs (`--max-pids` on `exec`/`supervise`)
+- 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec` (`ghost exec`)
+- 📏 **Supervise mode** - Fork+measure with peak memory, OOM attribution, output cap, and a result trailer (`ghost supervise`)
 - 💓 **Heartbeat** - PID 1 container keepalive with timestamp file
 
 ## Documentation
 
 - 📖 **[Full Usage Guide](USAGE.md)** - Comprehensive examples and use cases
 - ⚙️ **[Configuration Reference](CONFIG.md)** - All flags and environment variables
-- 🤖 **[Developer Notes](CLAUDE.md)** - Claude Code guidance and project structure
 
 ## License
 

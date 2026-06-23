@@ -262,6 +262,7 @@ func init() {
 		}
 
 		// Parse webhook configuration for diff
+		helpers.RecordWebhookChanges(cmd, &diffWebhookConfig)
 		if err := helpers.ParseWebhookConfig(&diffWebhookConfig, false); err != nil {
 			return err
 		}

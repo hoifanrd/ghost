@@ -3,7 +3,7 @@
 // queue, serves exactly two activities (fetch-submission and run-exec),
 // and runs each command in a sandboxed child process. The agent itself
 // is never sandboxed — Landlock and RLIMIT_NPROC are process-wide and
-// irreversible, so they are applied by the child (`ghost run --exec`)
+// irreversible, so they are applied by the child (`ghost exec`)
 // just before execve.
 package agent
 
@@ -34,9 +34,9 @@ const (
 	// EnvMaxPids is the RLIMIT_NPROC value the child applies before
 	// execve (default 32; 0 disables the limit).
 	EnvMaxPids = "GHOST_AGENT_MAX_PIDS"
-	// EnvSandbox toggles Landlock/netns sandboxing of the child
+	// EnvSandbox toggles Landlock filesystem sandboxing of the child
 	// (default true; only disabled in test environments where Landlock
-	// or network namespaces are unavailable).
+	// is unavailable).
 	EnvSandbox = "GHOST_AGENT_SANDBOX"
 	// EnvMaxConcurrentExecs bounds how many activities the worker runs at
 	// once in this container (default 4; 0 falls back to the default).
@@ -86,7 +86,7 @@ type Config struct {
 	MaxConcurrentExecs int
 
 	// GhostPath is the ghost binary spawned as the sandboxed child
-	// (`ghost run --exec ...`). Defaults to the running executable;
+	// (`ghost exec ...`). Defaults to the running executable;
 	// overridden in tests.
 	GhostPath string
 

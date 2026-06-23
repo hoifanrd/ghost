@@ -160,14 +160,14 @@ func (a *Activities) RunExec(ctx context.Context, in contract.RunExecInput) (con
 	stdoutCapture := filepath.Join(sessionDir, "stdout")
 	stderrCapture := filepath.Join(sessionDir, "stderr")
 
-	// Spawn ghost itself as the sandboxed child: `ghost run --exec`
-	// self-applies Landlock/netns/RLIMIT_NPROC and then execve's the
+	// Spawn ghost itself as the sandboxed child: `ghost exec`
+	// self-applies Landlock/RLIMIT_NPROC and then execve's the
 	// command, so the child's exit status IS the command's. The agent
 	// process is never sandboxed (Landlock and RLIMIT_NPROC are
 	// process-wide and irreversible).
-	args := []string{"run", "--exec", "-i", stdinPath, "-o", stdoutCapture, "-e", stderrCapture}
+	args := []string{"exec", "-i", stdinPath, "-o", stdoutCapture, "-e", stderrCapture}
 	if a.cfg.Sandbox {
-		args = append(args, "--sandbox", "--sandbox-workdir", a.cfg.Workdir)
+		args = append(args, "--landlock", "--workdir", a.cfg.Workdir)
 	}
 	if a.cfg.MaxPids > 0 {
 		args = append(args, fmt.Sprintf("--max-pids=%d", a.cfg.MaxPids))

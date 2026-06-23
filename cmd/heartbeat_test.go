@@ -115,3 +115,20 @@ func TestHeartbeatGracefulShutdown(t *testing.T) {
 		t.Fatal("heartbeat did not shut down within 2 seconds")
 	}
 }
+
+// TestWriteHeartbeatCreatesParentDirs guards the fix for heartbeat failing on a
+// nested --file path: writeHeartbeat must create missing parent directories
+// (matching run/supervise's createFileWithDir), not error out on every write.
+func TestWriteHeartbeatCreatesParentDirs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "a", "b", "c", ".heartbeat")
+	if err := writeHeartbeat(path); err != nil {
+		t.Fatalf("writeHeartbeat with nested path: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("heartbeat file not created under nested dir: %v", err)
+	}
+	if _, err := strconv.ParseInt(string(data), 10, 64); err != nil {
+		t.Errorf("heartbeat content %q is not a unix timestamp: %v", data, err)
+	}
+}

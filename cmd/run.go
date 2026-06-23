@@ -154,15 +154,7 @@ func runCommand(cmd *cobra.Command, args []string) error {
 		DryRun:         runFlags.DryRun,
 		Timeout:        runFlags.Timeout,
 		Sandbox:        runFlags.Sandbox,
-		Exec:           runFlags.Exec,
 		SandboxWorkDir: runFlags.SandboxWorkDir,
-		MaxPids:        runFlags.MaxPids,
-	}
-
-	// In exec mode, replace the current process entirely.
-	// No JSON output, webhooks, or uploads — the process is replaced.
-	if config.Exec {
-		return runner.ExecuteExec(config)
 	}
 
 	result, err := runner.Execute(config)
@@ -221,23 +213,6 @@ func runCommand(cmd *cobra.Command, args []string) error {
 	return helpers.OutputJSONAndWebhook(jsonResult, runFlags.Verbose, runFlags.DryRun)
 }
 
-// validateExecFlags checks that --exec is not combined with incompatible flags.
-func validateExecFlags() error {
-	if !runFlags.Exec {
-		return nil
-	}
-	if runWebhookConfig.URL != "" {
-		return fmt.Errorf("--exec is incompatible with --webhook-url (process is replaced via execve)")
-	}
-	if runUploadConfig.Provider != "" {
-		return fmt.Errorf("--exec is incompatible with --upload-provider (process is replaced via execve)")
-	}
-	if runFlags.DryRun {
-		return fmt.Errorf("--exec is incompatible with --dry-run (process is replaced via execve)")
-	}
-	return nil
-}
-
 func init() {
 	// Command-specific flags
 	runCmd.Flags().StringVarP(&inputFile, "input", "i", "", "Input file to redirect to command's stdin (required)")
@@ -251,6 +226,7 @@ func init() {
 
 	// Setup common flags using helper
 	helpers.SetupCommonFlags(runCmd, &runFlags)
+
 	helpers.SetupContextFlags(runCmd, &runContextConfig)
 	helpers.SetupUploadFlags(runCmd, &runUploadConfig)
 	helpers.SetupWebhookFlags(runCmd, &runWebhookConfig)
@@ -265,16 +241,6 @@ func init() {
 			return err
 		}
 
-		// Validate --exec incompatibilities
-		if err := validateExecFlags(); err != nil {
-			return err
-		}
-
-		// Validate --max-pids requires --exec
-		if runFlags.MaxPids > 0 && !runFlags.Exec {
-			return fmt.Errorf("--max-pids requires --exec (RLIMIT_NPROC is set before execve)")
-		}
-
 		// Default sandbox-workdir to current working directory
 		if runFlags.Sandbox && runFlags.SandboxWorkDir == "" {
 			runFlags.SandboxWorkDir, err = os.Getwd()
@@ -284,6 +250,7 @@ func init() {
 		}
 
 		// Parse webhook configuration
+		helpers.RecordWebhookChanges(cmd, &runWebhookConfig)
 		if err := helpers.ParseWebhookConfig(&runWebhookConfig, true); err != nil {
 			return err
 		}

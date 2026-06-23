@@ -15,7 +15,7 @@ var agentCmd = &cobra.Command{
 	Long: `Run ghost in agent mode (RFD 0015 grading runtime): a long-lived Temporal
 worker that joins a per-run task queue and serves exactly two activities —
 ghost-fetch-submission and ghost-run-exec. Each exec spec is run in a
-sandboxed child process ('ghost run --exec'); the agent itself is never
+sandboxed child process ('ghost exec'); the agent itself is never
 sandboxed.
 
 Configuration is read from GHOST_AGENT_* environment variables (see the

@@ -2,8 +2,18 @@
 
 package sandbox
 
+// SandboxOpts mirrors the Linux type so callers compile on all platforms.
+type SandboxOpts struct {
+	AllowCgroupRead bool
+}
+
 // ApplySandbox is a no-op on non-Linux platforms.
 func ApplySandbox(workDir string) error {
+	return nil
+}
+
+// ApplySandboxWith is a no-op on non-Linux platforms.
+func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	return nil
 }
 
@@ -11,3 +21,6 @@ func ApplySandbox(workDir string) error {
 func EnforceMaxPids(maxPids uint64) error {
 	return nil
 }
+
+// LandlockAvailable is always false on non-Linux platforms.
+func LandlockAvailable() bool { return false }
