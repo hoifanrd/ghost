@@ -42,7 +42,7 @@ Replaces the ghost process via `execve` after redirecting stdio. There is no JSO
 ghost supervise [flags] -- <command> [args...]
 ```
 
-Forks the command and keeps ghost alive to measure it (peak memory, OOM attribution, output-size cap), then writes a result trailer to `--result-file` and as a stream frame on stdout. ghost survives the child. It shares `--landlock`, `--workdir`, `--max-pids`, and `--timeout` with `exec`, and adds `--max-output-bytes` and `--result-file`. Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's. See [Supervise Mode](#supervise-mode).
+Forks the command and keeps ghost alive to measure it (peak memory, OOM attribution, output-size cap), then writes a result trailer to `--result-file` and as a stream frame on stdout. ghost survives the child. It shares `--landlock`, `--workdir`, and `--max-pids` with `exec`, and adds `--max-output-bytes`, `--result-file`, and `--timeout` (which `exec` does not have — exec replaces the process via `execve`, so it cannot enforce a deadline). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's. See [Supervise Mode](#supervise-mode).
 
 ### Diff Command
 
@@ -219,9 +219,9 @@ Supervise-specific flags:
 - `--result-file` — where the result trailer JSON is written. Default
   `/output/.result`.
 
-supervise also accepts the shared `--landlock`, `--workdir`, `--max-pids`, and
-`--timeout` flags. It emits no JSON, webhooks, or uploads — only the result
-trailer (file + stream frame).
+supervise also accepts `--landlock`, `--workdir`, and `--max-pids` (shared with
+`exec`), plus its own `--timeout` (which `exec` lacks). It emits no JSON,
+webhooks, or uploads — only the result trailer (file + stream frame).
 
 **Child isolation.** `--landlock` applies Landlock filesystem restrictions to
 the forked child. Network isolation is the container/cluster's responsibility

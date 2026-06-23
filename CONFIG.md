@@ -11,10 +11,17 @@ Complete reference for all Ghost configuration options including command-line fl
 | `--input` | `-i` | Input file to redirect to stdin | ✅ Yes | - |
 | `--output` | `-o` | Output file to capture stdout (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
 | `--stderr` | `-e` | Error file to capture stderr (supports `local:remote` syntax on `run`/`diff`) | ✅ Yes | - |
-| `--timeout` | `-t` | Execution timeout (e.g., 30s, 2m, 500ms) — `run`, `supervise`, `diff` only (not `exec`) | No | - |
 | `--help` | `-h` | Show help information | No | - |
 
-`--verbose`/`-v` and `--score` are available on `run` and `diff` only. `--timeout` is **not** available on `exec`: exec replaces the process via `execve`, leaving no parent to enforce a deadline — use `supervise` when a timeout is required.
+`--verbose`/`-v` and `--score` are available on `run` and `diff` only.
+
+### Execution Timeout
+
+| Flag | Short | Description | Commands | Default |
+|------|-------|-------------|----------|---------|
+| `--timeout` | `-t` | Execution timeout (e.g., 30s, 2m, 500ms) | `run`, `supervise`, `diff` | - |
+
+`--timeout` is **not** available on `exec`: exec replaces the process via `execve`, so no parent survives to enforce a deadline. Enforce `exec` timeouts from the caller/orchestrator (the grading agent wraps each `ghost exec` in its own timer) or use `ghost supervise`.
 
 ### Exec & Supervise Isolation Flags
 

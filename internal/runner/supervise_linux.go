@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -194,6 +195,11 @@ func writeTrailer(resultFile string, t output.Trailer) error {
 		return fmt.Errorf("supervise: marshal trailer: %w", err)
 	}
 	if resultFile != "" {
+		// Create the parent dir (--result-file is user-configurable), matching
+		// the createFileWithDir handling of stdout/stderr.
+		if err := os.MkdirAll(filepath.Dir(resultFile), 0o755); err != nil {
+			return fmt.Errorf("supervise: create result dir for %s: %w", resultFile, err)
+		}
 		if err := os.WriteFile(resultFile, data, 0644); err != nil {
 			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
 		}
