@@ -14,10 +14,9 @@ var (
 	execOutputFile string
 	execStderrFile string
 
-	execLandlock       bool
-	execWorkdir        string
-	execIsolateNetwork bool
-	execMaxPids        uint64
+	execLandlock bool
+	execWorkdir  string
+	execMaxPids  uint64
 )
 
 var execCmd = &cobra.Command{
@@ -27,12 +26,13 @@ var execCmd = &cobra.Command{
 redirecting stdin/stdout/stderr. No JSON output, webhooks, or uploads — the
 process is replaced and the command's exit status is ghost's.
 
-Landlock filesystem restrictions (--landlock) and per-exec network isolation
-(--isolate-network) are independent: pass each only as needed.
+Landlock filesystem restrictions (--landlock) are applied as needed. Network
+isolation is the container/cluster's responsibility (egress NetworkPolicy), not
+ghost's.
 
 The '--' separator is required to distinguish ghost flags from the target command.`,
 	Example: `  ghost exec -i input.txt -o output.txt -e error.log -- ./my-command arg1
-  ghost exec --landlock --isolate-network -i /dev/null -o out -e err -- ./prog`,
+  ghost exec --landlock -i /dev/null -o out -e err -- ./prog`,
 	RunE: execCommand,
 }
 
@@ -58,7 +58,6 @@ func execCommand(cmd *cobra.Command, args []string) error {
 		StderrFile:     execStderrFile,
 		Exec:           true,
 		Landlock:       execLandlock,
-		IsolateNetwork: execIsolateNetwork,
 		SandboxWorkDir: execWorkdir,
 		MaxPids:        execMaxPids,
 	}
@@ -78,7 +77,6 @@ func init() {
 	// to enforce a deadline — use supervise when a timeout is needed.
 	execCmd.Flags().BoolVar(&execLandlock, "landlock", false, "Apply Landlock filesystem restrictions before execution")
 	execCmd.Flags().StringVar(&execWorkdir, "workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
-	execCmd.Flags().BoolVar(&execIsolateNetwork, "isolate-network", false, "Unshare a network namespace before exec (loopback-only); requires CAP_SYS_ADMIN — silently no-ops in a capability-dropped container, leaving the container's network in effect")
 	execCmd.Flags().Uint64Var(&execMaxPids, "max-pids", 0, "Maximum number of processes for the current user (includes ghost itself; 0 = no limit)")
 
 	execCmd.PreRunE = func(cmd *cobra.Command, args []string) error {

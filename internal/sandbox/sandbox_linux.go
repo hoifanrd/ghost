@@ -16,12 +16,6 @@ type SandboxOpts struct {
 	// AllowCgroupRead grants RO /sys/fs/cgroup so supervise's sampler can read
 	// memory.current/peak/events after Landlock is applied.
 	AllowCgroupRead bool
-
-	// AllowUsernsSetup grants RWFiles("/proc") so the Landlocked parent can write
-	// a userns child's setgroups/uid_map/gid_map; without it the fork is denied.
-	// Broader than those files (Landlock can't scope to the unborn child's pid)
-	// but DAC-bounded for the inheriting child.
-	AllowUsernsSetup bool
 }
 
 // ApplySandbox applies the base Landlock filesystem restrictions.
@@ -46,10 +40,6 @@ func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	if opts.AllowCgroupRead {
 		// RO + IgnoreIfMissing for non-cgroup-v2 hosts.
 		rules = append(rules, landlock.RODirs("/sys/fs/cgroup").IgnoreIfMissing())
-	}
-	if opts.AllowUsernsSetup {
-		// RWFiles, not WriteFile: Go opens the id-map files read+write.
-		rules = append(rules, landlock.RWFiles("/proc"))
 	}
 
 	if err := landlock.V5.BestEffort().RestrictPaths(rules...); err != nil {

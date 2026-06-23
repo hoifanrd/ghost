@@ -51,7 +51,7 @@ ghost run -i input.txt -o output.txt -e stderr.txt --timeout 30s -- ./slow-comma
 
 ### Exec a Command
 
-`ghost exec` replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. Filesystem and network isolation are two independent flags:
+`ghost exec` replaces the ghost process via `execve` after redirecting stdio. There is no JSON output, webhook, or upload — the command's exit status becomes ghost's. The `--landlock` flag applies filesystem isolation. Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's.
 
 ```bash
 # Basic exec — zero overhead, no JSON output
@@ -61,9 +61,9 @@ ghost exec -i /dev/null -o /output/stdout -e /output/stderr -- ./command
 ghost exec --landlock --workdir /workspace \
   -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 
-# Landlock + a per-exec network namespace (loopback-only); this is what the
-# grading agent uses for each exec spec
-ghost exec --landlock --workdir /workspace --isolate-network --max-pids=33 \
+# Landlock + a process-count cap; this is what the grading agent uses for
+# each exec spec
+ghost exec --landlock --workdir /workspace --max-pids=33 \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
 ```
 
@@ -73,7 +73,7 @@ ghost exec --landlock --workdir /workspace --isolate-network --max-pids=33 \
 
 ```bash
 # The core sandbox executor backend runs a no-network container, so it uses
-# --landlock only (the netns clone is blocked by seccomp and unneeded)
+# --landlock only; egress is restricted by the container/cluster
 ghost supervise --landlock --max-pids=33 --max-output-bytes=1048576 \
   --result-file=/output/.result \
   -i /dev/null -o /output/stdout -e /output/stderr -- python3 main.py
@@ -81,17 +81,17 @@ ghost supervise --landlock --max-pids=33 --max-output-bytes=1048576 \
 
 ### Sandbox Isolation (legacy `run`)
 
-`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions **and** a per-child network namespace (`CLONE_NEWNET`, requires `CAP_SYS_ADMIN`) together (Linux only):
+`ghost run` keeps its original combined `--sandbox` flag, which applies Landlock filesystem restrictions (Linux only). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's.
 
 ```bash
-# Restricts filesystem access and isolates network
+# Restricts filesystem access
 ghost run --sandbox -i /dev/null -o /output/stdout -e /output/stderr -- ./untrusted-command
 
 # Custom working directory for read-write access
 ghost run --sandbox --sandbox-workdir /workspace -i /dev/null -o /output/stdout -e /output/stderr -- python script.py
 ```
 
-For the orthogonal `--landlock` / `--isolate-network` flags, use `exec` or `supervise` instead.
+For the `--landlock` flag, use `exec` or `supervise` instead.
 
 ### Heartbeat (Container Keepalive)
 
@@ -174,7 +174,7 @@ Ghost outputs structured JSON to stdout:
 - 🔍 **File comparison** - Built-in diff with structured output
 - ⏳ **Timeout support** - Automatic process termination
 - 🔧 **Environment configuration** - Configure via environment variables
-- 🔒 **Isolation** - Independent `--landlock` (filesystem) and `--isolate-network` (per-exec netns) flags on `exec`/`supervise`; combined `--sandbox` on legacy `run` (Linux)
+- 🔒 **Isolation** - `--landlock` (filesystem) flag on `exec`/`supervise`; `--sandbox` (Landlock) on legacy `run` (Linux). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's
 - 🛡️ **Process limiting** - RLIMIT_NPROC enforcement to prevent fork bombs (`--max-pids` on `exec`/`supervise`)
 - 🚀 **Exec mode** - Zero-overhead process replacement via `syscall.Exec` (`ghost exec`)
 - 📏 **Supervise mode** - Fork+measure with peak memory, OOM attribution, output cap, and a result trailer (`ghost supervise`)

@@ -17,7 +17,6 @@ var (
 	superviseTimeoutStr     string
 	superviseLandlock       bool
 	superviseWorkdir        string
-	superviseIsolateNetwork bool
 	superviseMaxPids        uint64
 	superviseMaxOutputBytes int64
 	superviseResultFile     string
@@ -31,13 +30,13 @@ var superviseCmd = &cobra.Command{
 the result file and as a stream frame on stdout. Unlike exec, ghost is not
 replaced — it survives the child to measure and report.
 
-Landlock filesystem restrictions (--landlock) and per-exec network isolation
-(--isolate-network) are independent: pass each only as needed.
+Landlock filesystem restrictions (--landlock) are applied as needed. Network
+isolation is the container/cluster's responsibility (egress NetworkPolicy), not
+ghost's.
 
 The '--' separator is required to distinguish ghost flags from the target command.`,
-	Example: `  ghost supervise --landlock -i /dev/null -o out -e err --result-file=/output/.result -- ./prog
-  ghost supervise --landlock --isolate-network -i in -o out -e err -- ./prog`,
-	RunE: superviseCommand,
+	Example: `  ghost supervise --landlock -i /dev/null -o out -e err --result-file=/output/.result -- ./prog`,
+	RunE:    superviseCommand,
 }
 
 func superviseCommand(cmd *cobra.Command, args []string) error {
@@ -68,7 +67,6 @@ func superviseCommand(cmd *cobra.Command, args []string) error {
 		Timeout:        timeout,
 		Supervise:      true,
 		Landlock:       superviseLandlock,
-		IsolateNetwork: superviseIsolateNetwork,
 		SandboxWorkDir: superviseWorkdir,
 		MaxPids:        superviseMaxPids,
 		MaxOutputBytes: superviseMaxOutputBytes,
@@ -89,7 +87,6 @@ func init() {
 	superviseCmd.Flags().StringVarP(&superviseTimeoutStr, "timeout", "t", "", "Timeout duration (e.g., 30s, 2m, 500ms)")
 	superviseCmd.Flags().BoolVar(&superviseLandlock, "landlock", false, "Apply Landlock filesystem restrictions before execution")
 	superviseCmd.Flags().StringVar(&superviseWorkdir, "workdir", "", "Working directory for Landlock read-write rules (defaults to current directory)")
-	superviseCmd.Flags().BoolVar(&superviseIsolateNetwork, "isolate-network", false, "Create a per-exec user+network namespace (loopback-only networking)")
 	superviseCmd.Flags().Uint64Var(&superviseMaxPids, "max-pids", 0, "Maximum number of processes for the current user (includes ghost itself; 0 = no limit)")
 	superviseCmd.Flags().Int64Var(&superviseMaxOutputBytes, "max-output-bytes", 1048576, "Total /output byte cap enforced as output is written")
 	superviseCmd.Flags().StringVar(&superviseResultFile, "result-file", "/output/.result", "Path the supervise result trailer is written to")

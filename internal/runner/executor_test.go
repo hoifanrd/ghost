@@ -407,9 +407,9 @@ func BenchmarkExecute(b *testing.B) {
 }
 
 func TestExecuteWithSandboxFlag(t *testing.T) {
-	// When sandbox=true in normal Execute (non-exec), the sandbox is applied
-	// before cmd.Run(). This may fail or degrade in unprivileged test envs
-	// (no CAP_SYS_ADMIN for CLONE_NEWNET), but we verify it doesn't panic.
+	// When sandbox=true in normal Execute (non-exec), Landlock is applied
+	// before cmd.Run(). This may degrade in environments without Landlock
+	// support, but we verify it doesn't panic.
 	tmpDir := t.TempDir()
 	inputFile := createTempFile(t, tmpDir, "input.txt", "")
 
@@ -423,8 +423,7 @@ func TestExecuteWithSandboxFlag(t *testing.T) {
 		SandboxWorkDir: tmpDir,
 	}
 
-	// Execute may fail due to CLONE_NEWNET requiring privileges,
-	// but it must not panic.
+	// Execute may degrade without Landlock support, but it must not panic.
 	_, _ = Execute(config)
 }
 

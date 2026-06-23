@@ -32,7 +32,6 @@ type Config struct {
 	Timeout        time.Duration // 0 means no timeout
 	Sandbox        bool          // legacy bundled Landlock+netns (run default mode)
 	Landlock       bool          // apply Landlock filesystem restrictions (exec/supervise)
-	IsolateNetwork bool          // create a per-exec network namespace (exec/supervise)
 	Exec           bool
 	Supervise      bool
 	SandboxWorkDir string

@@ -4,8 +4,7 @@ package sandbox
 
 // SandboxOpts mirrors the Linux type so callers compile on all platforms.
 type SandboxOpts struct {
-	AllowCgroupRead  bool
-	AllowUsernsSetup bool
+	AllowCgroupRead bool
 }
 
 // ApplySandbox is a no-op on non-Linux platforms.

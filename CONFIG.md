@@ -18,12 +18,11 @@ Complete reference for all Ghost configuration options including command-line fl
 
 ### Exec & Supervise Isolation Flags
 
-Available **only** on `exec` and `supervise`. `--landlock` and `--isolate-network` are independent — either can be passed alone.
+Available **only** on `exec` and `supervise`. Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's.
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
 | `--landlock` | Apply Landlock filesystem restrictions only, no namespaces (Linux only) | No | `false` |
-| `--isolate-network` | Loopback-only network isolation. On `exec`: a bare `CLONE_NEWNET` that requires `CAP_SYS_ADMIN` and silently no-ops in a capability-dropped container. On `supervise`: a `CLONE_NEWUSER`+`CLONE_NEWNET` user namespace that works without `CAP_SYS_ADMIN` | No | `false` |
 | `--workdir` | Working directory for Landlock read-write rules | No | Current directory |
 | `--max-pids` | Maximum processes for current user via RLIMIT_NPROC (includes ghost itself; 0 = no limit) | No | `0` |
 
@@ -38,11 +37,11 @@ See [USAGE.md](USAGE.md#supervise-mode) for the result-trailer schema and stream
 
 ### Legacy `run`/`diff` Sandbox Flags
 
-The legacy `run` and `diff` commands keep the original combined isolation flag. `--sandbox` applies Landlock filesystem restrictions **and** a per-child network namespace (`CLONE_NEWNET`, which requires `CAP_SYS_ADMIN`) together. These flags are **not** available on `exec`/`supervise` (use `--landlock`/`--isolate-network`/`--workdir` there).
+The legacy `run` and `diff` commands keep the original `--sandbox` flag, which applies Landlock filesystem restrictions (Linux only). Network isolation is the container/cluster's responsibility (egress NetworkPolicy), not ghost's. These flags are **not** available on `exec`/`supervise` (use `--landlock`/`--workdir` there).
 
 | Flag | Description | Required | Default |
 |------|-------------|----------|---------|
-| `--sandbox` | Apply Landlock filesystem and network namespace isolation (Linux only) | No | `false` |
+| `--sandbox` | Apply Landlock filesystem isolation (Linux only) | No | `false` |
 | `--sandbox-workdir` | Working directory for Landlock read-write rules | No | Current directory |
 
 ### Heartbeat Flags
