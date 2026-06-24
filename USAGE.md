@@ -236,10 +236,11 @@ always receives a trailer rather than a broken stream.
 
 The trailer is a single JSON object, written to two destinations:
 
-1. **`--result-file`** (e.g. `/output/.result`) — read directly off the bind
-   mount, no orchestrator API call.
-2. **A framed line on ghost's own stdout** for backends that read the exec
-   stream:
+1. **A framed line on ghost's own stdout** — the authoritative, forge-proof
+   channel. The child's stdout is redirected to `/output/stdout`, so it never
+   holds a writable fd to ghost's fd 1 (the exec-attach stream). Even a
+   surviving same-UID child fork cannot forge this frame. Backends read it by
+   demuxing the exec stream:
 
    ```
    \x1e\x1eZINC-RESULT\x1e<compact-json>\x1e\x1e
@@ -248,6 +249,11 @@ The trailer is a single JSON object, written to two destinations:
    The two RS (`0x1e`) bytes plus the `ZINC-RESULT` token guard against false
    matches in the child's real output (which lives in `/output/{stdout,stderr}`,
    never on this stream).
+2. **`--result-file`** (e.g. `/output/.result`, mode `0600`) — read directly
+   off the bind mount, no orchestrator API call. Kept as a transition fallback:
+   a same-UID child fork can rewrite this file, so consumers should prefer the
+   stdout frame as the authoritative source and treat the file as a fallback
+   only when no frame is present.
 
 Trailer schema (version `1`):
 

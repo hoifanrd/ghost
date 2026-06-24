@@ -53,7 +53,10 @@ func createFileWithDir(path string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
-	file, err := os.Create(path)
+	// 0600, not os.Create's 0666: sandbox output files should not be
+	// world/group-writable. The Docker read path (CopyFromContainer) runs as the
+	// daemon/root and reads 0600 regardless of owner.
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file %s: %w", path, err)
 	}
