@@ -22,22 +22,23 @@ const (
 )
 
 type Config struct {
-	Command        string
-	Args           []string
-	InputFile      string
-	OutputFile     string
-	StderrFile     string
-	Verbose        bool
-	DryRun         bool
-	Timeout        time.Duration // 0 means no timeout
-	Sandbox        bool          // legacy bundled Landlock+netns (run default mode)
-	Landlock       bool          // apply Landlock filesystem restrictions (exec/supervise)
-	Exec           bool
-	Supervise      bool
-	SandboxWorkDir string
-	MaxPids        uint64
-	MaxOutputBytes int64  // total /output byte cap for supervise mode
-	ResultFile     string // path the supervise trailer is written to
+	Command            string
+	Args               []string
+	InputFile          string
+	OutputFile         string
+	StderrFile         string
+	Verbose            bool
+	DryRun             bool
+	Timeout            time.Duration // 0 means no timeout
+	Sandbox            bool          // legacy bundled Landlock+netns (run default mode)
+	Landlock           bool          // apply Landlock filesystem restrictions (exec/supervise)
+	Exec               bool
+	Supervise          bool
+	SandboxWorkDir     string
+	MaxPids            uint64
+	SeccompProfileJSON string // Docker-format seccomp profile JSON (inline, single-sourced from core)
+	MaxOutputBytes     int64  // total /output byte cap for supervise mode
+	ResultFile         string // path the supervise trailer is written to
 }
 
 type Result struct {
