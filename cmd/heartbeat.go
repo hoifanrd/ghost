@@ -78,5 +78,8 @@ func writeHeartbeat(path string) error {
 		return err
 	}
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
-	return os.WriteFile(path, []byte(ts), 0644)
+	// 0600 for hygiene. Note: a same-UID child can still overwrite this to forge
+	// liveness; authoritative recycling must be corroborated host-side (daemon
+	// container state), so core treats .heartbeat as a hint only.
+	return os.WriteFile(path, []byte(ts), 0o600)
 }

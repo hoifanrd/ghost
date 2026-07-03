@@ -73,6 +73,26 @@ func TestSuperviseHappyPath(t *testing.T) {
 	assertFileContains(t, cfg.OutputFile, "hello\n")
 }
 
+// TestSuperviseFilePermissions locks the 0600 hardening: the result, stdout and
+// stderr files must not be world/group-writable. The forge-proof channel is the
+// stdout frame, but the at-rest artifacts should still be owner-only.
+func TestSuperviseFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	cfg := superviseConfig(dir, "sh", "-c", "echo hi; echo err 1>&2")
+	if err := Supervise(cfg); err != nil {
+		t.Fatalf("Supervise: %v", err)
+	}
+	for _, path := range []string{cfg.ResultFile, cfg.OutputFile, cfg.StderrFile} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("%s mode = %#o, want 0600", path, perm)
+		}
+	}
+}
+
 func TestSuperviseExitCode(t *testing.T) {
 	dir := t.TempDir()
 	cfg := superviseConfig(dir, "sh", "-c", "exit 7")

@@ -22,22 +22,23 @@ const (
 )
 
 type Config struct {
-	Command        string
-	Args           []string
-	InputFile      string
-	OutputFile     string
-	StderrFile     string
-	Verbose        bool
-	DryRun         bool
-	Timeout        time.Duration // 0 means no timeout
-	Sandbox        bool          // legacy bundled Landlock+netns (run default mode)
-	Landlock       bool          // apply Landlock filesystem restrictions (exec/supervise)
-	Exec           bool
-	Supervise      bool
-	SandboxWorkDir string
-	MaxPids        uint64
-	MaxOutputBytes int64  // total /output byte cap for supervise mode
-	ResultFile     string // path the supervise trailer is written to
+	Command            string
+	Args               []string
+	InputFile          string
+	OutputFile         string
+	StderrFile         string
+	Verbose            bool
+	DryRun             bool
+	Timeout            time.Duration // 0 means no timeout
+	Sandbox            bool          // legacy bundled Landlock+netns (run default mode)
+	Landlock           bool          // apply Landlock filesystem restrictions (exec/supervise)
+	Exec               bool
+	Supervise          bool
+	SandboxWorkDir     string
+	MaxPids            uint64
+	SeccompProfileJSON string // Docker-format seccomp profile JSON (inline, single-sourced from core)
+	MaxOutputBytes     int64  // total /output byte cap for supervise mode
+	ResultFile         string // path the supervise trailer is written to
 }
 
 type Result struct {
@@ -53,7 +54,10 @@ func createFileWithDir(path string) (*os.File, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
-	file, err := os.Create(path)
+	// 0600, not os.Create's 0666: sandbox output files should not be
+	// world/group-writable. The Docker read path (CopyFromContainer) runs as the
+	// daemon/root and reads 0600 regardless of owner.
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file %s: %w", path, err)
 	}
