@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/elastic/go-seccomp-bpf/arch"
+	"golang.org/x/net/bpf"
 )
 
 // denyLinkProfile is a minimal profile (default allow) that denies the four
@@ -55,11 +58,12 @@ func TestApplySeccompFromJSON_DeniesLink(t *testing.T) {
 	}
 }
 
-// TestBuildSeccompFilter_DefaultDenyWithConditional validates the parser
-// handles core's real profile shape: default-deny (ERRNO + defaultErrnoRet),
-// an allow list, and a conditional entry (the clone CLONE_NEW* mask). It only
-// builds the filter (no Load), so it is safe to run in-process.
-func TestBuildSeccompFilter_DefaultDenyWithConditional(t *testing.T) {
+// TestBuildProgram_DefaultDenyWithConditional validates the generator handles
+// core's real profile shape: default-deny (ERRNO + defaultErrnoRet), an allow
+// list, and a conditional entry (the clone CLONE_THREAD mask). It only builds
+// and assembles the BPF (no Load), so it is safe to run in-process, and asserts
+// every conditional jump stayed within BPF's 8-bit skip range.
+func TestBuildProgram_DefaultDenyWithConditional(t *testing.T) {
 	errno := uint(38) // ENOSYS, matching core's defaultErrnoRet.
 	profile := &seccompProfile{
 		DefaultAction:   "SCMP_ACT_ERRNO",
@@ -68,15 +72,79 @@ func TestBuildSeccompFilter_DefaultDenyWithConditional(t *testing.T) {
 		Syscalls: []seccompSyscall{
 			{Names: []string{"read", "write", "exit", "exit_group", "rt_sigreturn"}, Action: "SCMP_ACT_ALLOW"},
 			{Names: []string{"clone"}, Action: "SCMP_ACT_ALLOW", Args: []seccompArg{
-				{Index: 0, Value: 0x7E020000, ValueTwo: 0, Op: "SCMP_CMP_MASKED_EQ"},
+				{Index: 0, Value: 0x10000, ValueTwo: 0x10000, Op: "SCMP_CMP_MASKED_EQ"},
 			}},
 		},
 	}
-	filter, err := buildSeccompFilter(profile)
+	insts, err := buildProgram(profile)
 	if err != nil {
-		t.Fatalf("buildSeccompFilter failed on a core-shaped profile: %v", err)
+		t.Fatalf("buildProgram failed on a core-shaped profile: %v", err)
 	}
-	filter.Release()
+	if len(insts) == 0 {
+		t.Fatal("buildProgram returned no instructions")
+	}
+	// The whole point of the cgo-free assembler is that it produces a valid,
+	// loadable BPF program; bpf.Assemble enforces skip-range and shape.
+	if _, err := bpf.Assemble(insts); err != nil {
+		t.Fatalf("assembled program is not valid BPF: %v", err)
+	}
+}
+
+// TestBuildProgram_LargeAllowlistFitsShortJumps guards the generator invariant
+// that conditional jumps never exceed BPF's 8-bit skip field regardless of
+// allowlist size — the failure mode that a naive one-cell-per-syscall design
+// would hit. It builds a ~400-entry allowlist (larger than core's real one).
+func TestBuildProgram_LargeAllowlistFitsShortJumps(t *testing.T) {
+	names := make([]string, 0, 400)
+	// Use real x86_64 names so they resolve; repeat the core allowlist-ish set.
+	base := []string{"read", "write", "open", "close", "stat", "fstat", "lstat",
+		"poll", "lseek", "mmap", "mprotect", "munmap", "brk", "rt_sigaction",
+		"rt_sigprocmask", "ioctl", "pread64", "pwrite64", "readv", "writev",
+		"access", "pipe", "select", "sched_yield", "mremap", "msync", "mincore",
+		"madvise", "dup", "dup2", "nanosleep", "getpid", "socket", "connect",
+		"accept", "sendto", "recvfrom", "bind", "listen", "getsockname"}
+	for len(names) < 400 {
+		names = append(names, base...)
+	}
+	profile := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ERRNO",
+		Architectures: []string{"SCMP_ARCH_X86_64"},
+		Syscalls:      []seccompSyscall{{Names: names, Action: "SCMP_ACT_ALLOW"}},
+	}
+	insts, err := buildProgram(profile)
+	if err != nil {
+		t.Fatalf("buildProgram failed on a large allowlist: %v", err)
+	}
+	if _, err := bpf.Assemble(insts); err != nil {
+		t.Fatalf("large-allowlist program is not valid BPF: %v", err)
+	}
+}
+
+// TestResolveSyscall_NewfstatatAliases guards the libseccomp name-alias layer:
+// core's Docker profile lists newfstatat (glibc's runtime stat), but elastic's
+// tables spell that syscall fstatat on aarch64 and fstatat64 on i386/arm. If the
+// alias resolution regresses, newfstatat silently drops on those arches and a
+// default-deny profile denies libc's stat, breaking the dynamic loader. Each
+// arch here must resolve newfstatat to its real syscall number.
+func TestResolveSyscall_NewfstatatAliases(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		info *arch.Info
+	}{
+		{"x86_64", arch.X86_64},
+		{"i386", arch.I386},
+		{"aarch64", arch.AARCH64},
+		{"arm", arch.ARM},
+	} {
+		nr, ok := resolveSyscall(tc.info, "newfstatat")
+		if !ok {
+			t.Errorf("%s: newfstatat did not resolve (would drop to default-deny and break libc)", tc.name)
+			continue
+		}
+		if nr < 0 {
+			t.Errorf("%s: newfstatat resolved to invalid number %d", tc.name, nr)
+		}
+	}
 }
 
 // TestApplySeccompFromJSON_EmptyIsNoOp confirms the gating: empty input means
