@@ -85,6 +85,12 @@ func Supervise(config *Config) error {
 			return fmt.Errorf("supervise: %w", err)
 		}
 	}
+	if config.SeccompProfileJSON != "" {
+		// Applied to the parent pre-fork; inherited by the child across fork.
+		if err := sandbox.ApplySeccompFromJSON([]byte(config.SeccompProfileJSON)); err != nil {
+			return fmt.Errorf("supervise: %w", err)
+		}
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	// §12.7: supervise enforces its own timeout as a SIGTERM→delay→SIGKILL
