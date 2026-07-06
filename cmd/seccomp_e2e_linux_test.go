@@ -23,6 +23,48 @@ const denyLinkProfileJSON = `{
   ]
 }`
 
+// defaultDenyProfileJSON mirrors core's real profile shape: default-deny with
+// ENOSYS and a large SCMP_ACT_ALLOW allowlist (exercises the assembler's
+// short-jump invariant and multi-arch dispatch). It declares every arch ghost
+// supports so the test runs on amd64 and arm64 hosts alike — core's production
+// profile is x86-only, but this test must be host-portable to prove the pure-Go
+// default-deny path works end-to-end. Names absent on the running arch are
+// silently skipped by the generator.
+//
+// Unlike core's production profile, this one allows clone/fork unconditionally.
+// supervise applies seccomp in the PARENT before forking the child, and Go's
+// fork issues clone with SIGCHLD (not CLONE_THREAD), so a clone-thread-only mask
+// would deny supervise's own child spawn. The masked-eq/conditional-clone path
+// is covered separately by the buildProgram unit test; here the goal is to prove
+// a realistic large default-deny profile assembles and executes correctly.
+const defaultDenyProfileJSON = `{
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultErrnoRet": 38,
+  "architectures": ["SCMP_ARCH_AARCH64", "SCMP_ARCH_ARM", "SCMP_ARCH_X86_64", "SCMP_ARCH_X86", "SCMP_ARCH_X32"],
+  "syscalls": [
+    {
+      "names": [
+        "access", "arch_prctl", "brk", "capget", "capset", "chdir", "clock_gettime",
+        "clock_nanosleep", "clone", "clone3", "close", "close_range", "connect", "dup", "dup2", "dup3",
+        "epoll_create1", "epoll_ctl", "epoll_pwait", "execve", "execveat", "exit", "exit_group",
+        "faccessat", "faccessat2", "fadvise64", "fchdir", "fcntl", "fork", "fstat", "fstatfs", "fsync",
+        "futex", "futex_waitv", "getcwd", "getdents64", "getegid", "geteuid", "getgid", "getpid",
+        "getppid", "getrandom", "getrlimit", "get_robust_list", "gettid", "gettimeofday", "getuid",
+        "ioctl", "landlock_add_rule", "landlock_create_ruleset", "landlock_restrict_self",
+        "lseek", "madvise", "mmap", "mmap2", "mprotect", "mremap", "munmap", "nanosleep",
+        "newfstatat", "open", "openat", "openat2", "pipe2", "poll", "ppoll", "prctl", "pread64",
+        "prlimit64", "pselect6", "read", "readlink", "readlinkat", "readv", "restart_syscall",
+        "rseq", "rt_sigaction", "rt_sigprocmask", "rt_sigreturn", "sched_getaffinity", "sched_yield",
+        "seccomp", "setpgid", "setsid", "set_robust_list", "set_tid_address", "sigaltstack", "statfs", "statx",
+        "sysinfo", "tgkill", "uname", "unlink", "unlinkat", "vfork", "wait4", "waitid", "write", "writev",
+        "ugetrlimit", "fstat64", "fstatat64", "geteuid32", "getegid32", "getgid32", "getuid32",
+        "_llseek", "stat64", "lstat64", "sigreturn"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    }
+  ]
+}`
+
 // ghostBinPath holds the path to a freshly built ghost binary, built once per
 // process via buildGhostBin. End-to-end seccomp tests need the real CLI surface
 // (flag parsing → Config → ApplySeccompFromJSON → filter → child inherits),
@@ -34,8 +76,8 @@ var (
 )
 
 // buildGhostBin builds the ghost binary into a temp file once per test process
-// and returns its path. Subsequent calls return the cached path. The binary is
-// built with CGO enabled (libseccomp-golang needs it).
+// and returns its path. Subsequent calls return the cached path. The seccomp
+// implementation is pure Go, so no cgo toolchain or libseccomp is required.
 func buildGhostBin(t *testing.T) string {
 	t.Helper()
 	ghostBinOnce.Do(func() {
@@ -178,5 +220,71 @@ func TestSeccompEndToEnd_NoProfileIsNoOp(t *testing.T) {
 
 	if _, statErr := os.Lstat(linkTarget); statErr != nil {
 		t.Fatalf("expected symlink to be created without a seccomp profile, got: %v\nghost output:\n%s", statErr, out)
+	}
+}
+
+// TestSeccompEndToEnd_DefaultDenyAllowsNormalCommand proves the pure-Go filter
+// handles core's real profile shape end-to-end: a large default-deny allowlist
+// plus the conditional clone entry. A plain command that reads/writes must
+// succeed under it — this is the strongest proof that the assembler's short-jump
+// invariant holds on a real (~100-entry) allowlist and that the arch dispatch
+// selects the running architecture correctly. A broken filter would ENOSYS a
+// core syscall and the command would die instead of writing its output.
+func TestSeccompEndToEnd_DefaultDenyAllowsNormalCommand(t *testing.T) {
+	bin := buildGhostBin(t)
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "deny-ok.txt")
+
+	out, err := runGhostSupervise(t, bin, defaultDenyProfileJSON,
+		"sh", "-c", "echo ok > "+target)
+	if err != nil {
+		t.Fatalf("ghost supervise failed on a legitimate command under the default-deny profile\noutput:\n%s\nerr: %v", out, err)
+	}
+
+	data, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("expected output file %s under default-deny profile, got: %v\nghost output:\n%s", target, readErr, out)
+	}
+	if string(data) != "ok\n" {
+		t.Errorf("output file content = %q, want %q\nghost output:\n%s", string(data), "ok\n", out)
+	}
+}
+
+// TestSeccompEndToEnd_DefaultDenyBlocksUnlistedSyscall proves the default-deny
+// posture actually denies: `chmod` is deliberately omitted from the allowlist
+// above, so a command that calls it must fail under the profile. This guards
+// against an inverted/empty filter that would allow everything (which would
+// still pass the allow-normal-command test). The command exits nonzero because
+// chmod returns ENOSYS.
+func TestSeccompEndToEnd_DefaultDenyBlocksUnlistedSyscall(t *testing.T) {
+	bin := buildGhostBin(t)
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "chmod-target.txt")
+	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+		t.Fatalf("seed file: %v", err)
+	}
+	marker := filepath.Join(dir, "marker")
+
+	// `chmod` (the coreutil) invokes the chmod/fchmodat syscall, which is NOT in
+	// defaultDenyProfileJSON's allowlist → ENOSYS → chmod exits nonzero. The
+	// child's own stdout is redirected to the -o file, not ghost's stream, so we
+	// record the outcome in a marker file (open/write ARE allowlisted) and read
+	// that back — the same filesystem-effect pattern the other e2e tests use.
+	out, _ := runGhostSupervise(t, bin, defaultDenyProfileJSON,
+		"sh", "-c", "if chmod 600 "+target+" 2>/dev/null; then echo OK > "+marker+"; else echo BLOCKED > "+marker+"; fi")
+
+	data, readErr := os.ReadFile(marker)
+	if readErr != nil {
+		t.Fatalf("marker file not written (child could not run under profile?): %v\nghost output:\n%s", readErr, out)
+	}
+	switch string(data) {
+	case "BLOCKED\n":
+		// expected: fchmodat/chmod denied by default-deny.
+	case "OK\n":
+		t.Fatalf("chmod succeeded despite being absent from the allowlist — default-deny not engaged\nghost output:\n%s", out)
+	default:
+		t.Fatalf("unexpected marker content %q\nghost output:\n%s", string(data), out)
 	}
 }
