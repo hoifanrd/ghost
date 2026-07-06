@@ -2,6 +2,7 @@ package runner
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -427,9 +428,36 @@ func TestExecuteWithSandboxFlag(t *testing.T) {
 	_, _ = Execute(config)
 }
 
+const execExecChildEnv = "GHOST_EXECEXEC_TEST_CHILD"
+
+// ExecuteExec dup3's stdin/stdout/stderr onto its own files before resolving the
+// command, so running it in-process would clobber the test runner's stdio. Drive
+// it in a re-exec'd child and assert on its exit code instead.
 func TestExecuteExecModeNonExistentCommand(t *testing.T) {
-	tmpDir := t.TempDir()
-	inputFile := createTempFile(t, tmpDir, "input.txt", "")
+	if os.Getenv(execExecChildEnv) == "1" {
+		os.Exit(execExecNonExistentVerdict())
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestExecuteExecModeNonExistentCommand$")
+	cmd.Env = append(os.Environ(), execExecChildEnv+"=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("exec-mode child did not report the expected error for a non-existent command\noutput:\n%s\nerr: %v", out, err)
+	}
+}
+
+// Returns 0 when ExecuteExec reports the expected error, 1 otherwise, 2 on setup
+// failure. Must not write to stdout after ExecuteExec's dup3.
+func execExecNonExistentVerdict() int {
+	tmpDir, err := os.MkdirTemp("", "execmode-child-*")
+	if err != nil {
+		return 2
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	inputFile := filepath.Join(tmpDir, "input.txt")
+	if err := os.WriteFile(inputFile, nil, 0o644); err != nil {
+		return 2
+	}
 
 	config := &Config{
 		Command:    "nonexistentcommand12345",
@@ -440,11 +468,9 @@ func TestExecuteExecModeNonExistentCommand(t *testing.T) {
 		Exec:       true,
 	}
 
-	err := ExecuteExec(config)
-	if err == nil {
-		t.Fatal("expected error for non-existent command in exec mode, got nil")
+	err = ExecuteExec(config)
+	if err != nil && (strings.Contains(err.Error(), "command not found") || strings.Contains(err.Error(), "not supported")) {
+		return 0
 	}
-	if !strings.Contains(err.Error(), "command not found") && !strings.Contains(err.Error(), "not supported") {
-		t.Errorf("unexpected error: %v", err)
-	}
+	return 1
 }

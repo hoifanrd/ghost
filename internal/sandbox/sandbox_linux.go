@@ -20,7 +20,8 @@ type SandboxOpts struct {
 
 // ApplySandbox applies the base Landlock filesystem restrictions.
 // Read-only: /usr, /bin, /lib, /lib64, /etc (ignored if missing), /proc/self/fd.
-// Read-write: /output, /tmp, /dev, and the given work directory.
+// Read-write: /tmp, /dev, the given work directory, and /output (ignored if
+// missing, so the sandbox still applies on hosts without the container mount).
 func ApplySandbox(workDir string) error {
 	return ApplySandboxWith(workDir, SandboxOpts{})
 }
@@ -35,7 +36,8 @@ func ApplySandboxWith(workDir string, opts SandboxOpts) error {
 	rules := []landlock.Rule{
 		landlock.RODirs("/usr", "/bin", "/lib", "/lib64", "/etc").IgnoreIfMissing(),
 		landlock.RODirs("/proc/self/fd"),
-		landlock.RWDirs("/output", "/tmp", "/dev", workDir),
+		landlock.RWDirs("/tmp", "/dev", workDir),
+		landlock.RWDirs("/output").IgnoreIfMissing(),
 	}
 	if opts.AllowCgroupRead {
 		// RO + IgnoreIfMissing for non-cgroup-v2 hosts.
