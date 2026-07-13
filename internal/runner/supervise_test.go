@@ -215,3 +215,31 @@ func TestSuperviseTimeout(t *testing.T) {
 		t.Errorf("exit_code = %d, want -1 on timeout", tr.ExitCode)
 	}
 }
+
+// TestWriteTrailer_TightensPreexistingResultFile guards the file-perms fix for
+// the supervise result file: writeTrailer now open+fchmods rather than
+// os.WriteFile, so a PRE-EXISTING broader-mode result file (owned by this
+// process) is tightened to 0600 and the trailer is still written correctly.
+func TestWriteTrailer_TightensPreexistingResultFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "result.json")
+	if err := os.WriteFile(path, []byte("stale"), 0o666); err != nil {
+		t.Fatalf("pre-create: %v", err)
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatalf("pre-chmod: %v", err)
+	}
+	want := output.Trailer{Schema: 1, ExitCode: 7, DurationMs: 42}
+	if err := writeTrailer(path, want); err != nil {
+		t.Fatalf("writeTrailer: %v", err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("mode = %#o after tightening a pre-existing 0666 result file, want 0600", perm)
+	}
+	if got := decodeResultFile(t, path); got != want {
+		t.Errorf("trailer = %+v, want %+v", got, want)
+	}
+}

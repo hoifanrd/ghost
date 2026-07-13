@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -48,6 +49,28 @@ type Result struct {
 	ExecutionTime int64 // milliseconds
 }
 
+// tightenToOwnerOnly best-effort restricts f to 0600 via fchmod on the OPEN
+// DESCRIPTOR (fchmod, not a path-based chmod, so there is no TOCTOU on the name).
+// It exists because O_CREAT's mode argument applies only when the file is
+// created; a file that already existed keeps its prior, possibly broader, mode.
+//
+// OWNERSHIP CAVEAT: a process may fchmod only a file it owns (absent CAP_FOWNER).
+// In the sandbox the driver's init step pre-creates /output/{stdout,stderr,
+// .heartbeat,.result} as ROOT-owned 0666 while ghost runs as a NON-root uid, so
+// fchmod there returns EPERM — tightening a root-owned file is core's job, not
+// ghost's. We therefore tolerate EPERM/ENOSYS as a no-op (not a run failure) and
+// surface any other error. When ghost DOES own the file (standalone use, or a
+// re-run over a ghost-created file) the result is guaranteed 0600.
+func tightenToOwnerOnly(f *os.File) error {
+	if err := f.Chmod(0o600); err != nil {
+		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.ENOSYS) {
+			return nil
+		}
+		return fmt.Errorf("tighten %s to 0600: %w", f.Name(), err)
+	}
+	return nil
+}
+
 // createFileWithDir creates a file and any necessary parent directories
 func createFileWithDir(path string) (*os.File, error) {
 	dir := filepath.Dir(path)
@@ -60,6 +83,13 @@ func createFileWithDir(path string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file %s: %w", path, err)
+	}
+	// O_CREAT's 0600 only applies on creation, so a PRE-EXISTING file keeps its
+	// old (possibly broader) mode. Tighten it down. Ownership caveat: see
+	// tightenToOwnerOnly — a root-owned bind-mount file stays as core made it.
+	if err := tightenToOwnerOnly(file); err != nil {
+		file.Close()
+		return nil, err
 	}
 	return file, nil
 }

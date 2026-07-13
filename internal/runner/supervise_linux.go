@@ -211,8 +211,24 @@ func writeTrailer(resultFile string, t output.Trailer) error {
 		}
 		// 0600, not 0666: a surviving same-UID child fork can still rewrite this
 		// (the forge-proof channel is the stdout frame core reads), but there is
-		// no reason to leave the at-rest result world/group-writable.
-		if err := os.WriteFile(resultFile, data, 0o600); err != nil {
+		// no reason to leave the at-rest result world/group-writable. Open+fchmod
+		// rather than os.WriteFile so a PRE-EXISTING broader-mode file is tightened
+		// too (O_CREAT's mode applies only on creation). Ownership caveat: see
+		// tightenToOwnerOnly — a root-owned bind-mount file stays as core made it
+		// (EPERM tolerated); when ghost owns the file it is guaranteed 0600.
+		f, err := os.OpenFile(resultFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+		if err != nil {
+			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
+		}
+		if err := tightenToOwnerOnly(f); err != nil {
+			f.Close()
+			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
+		}
+		if _, err := f.Write(data); err != nil {
+			f.Close()
+			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
+		}
+		if err := f.Close(); err != nil {
 			return fmt.Errorf("supervise: write result file %s: %w", resultFile, err)
 		}
 	}
