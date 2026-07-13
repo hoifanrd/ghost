@@ -27,9 +27,10 @@ const denyLinkProfileJSON = `{
 // ENOSYS and a large SCMP_ACT_ALLOW allowlist (exercises the assembler's
 // short-jump invariant and multi-arch dispatch). It declares every arch ghost
 // supports so the test runs on amd64 and arm64 hosts alike — core's production
-// profile is x86-only, but this test must be host-portable to prove the pure-Go
-// default-deny path works end-to-end. Names absent on the running arch are
-// silently skipped by the generator.
+// profile is itself multi-arch (SCMP_ARCH_X86_64/X86/X32/AARCH64), and this
+// test stays host-portable to prove the pure-Go default-deny path works
+// end-to-end. Names absent on the running arch are silently skipped by the
+// generator.
 //
 // Unlike core's production profile, this one allows clone/fork unconditionally.
 // supervise applies seccomp in the PARENT before forking the child, and Go's
@@ -142,10 +143,11 @@ func runGhostSupervise(t *testing.T, bin, profileJSON string, args ...string) ([
 }
 
 // TestSeccompEndToEnd_DeniesLinkCreation proves the full path engages seccomp:
-// flag → Config.SeccompProfileJSON → ApplySeccompFromJSON → libseccomp filter
-// → SetNoNewPrivsBit + Load → child inherits across fork → the symlink syscall
-// is denied. The `ln -sf` inside the supervised child must fail, and the
-// symlink target must NOT exist.
+// flag → Config.SeccompProfileJSON → ApplySeccompFromJSON → buildProgram +
+// bpf.Assemble (profile compiled to a BPF program) → loadFilter (prctl
+// PR_SET_NO_NEW_PRIVS + raw seccomp(2) SECCOMP_SET_MODE_FILTER with TSYNC) →
+// child inherits across fork → the symlink syscall is denied. The `ln -sf`
+// inside the supervised child must fail, and the symlink target must NOT exist.
 func TestSeccompEndToEnd_DeniesLinkCreation(t *testing.T) {
 	bin := buildGhostBin(t)
 
