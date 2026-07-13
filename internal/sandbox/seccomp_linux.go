@@ -140,10 +140,13 @@ func buildProgram(p *seccompProfile) ([]bpf.Instruction, error) {
 	for _, archName := range p.Architectures {
 		info, ok := archInfo(archName)
 		if !ok {
-			// Unknown/unsupported arch name: skip the declaration. It matches no
-			// block, so it falls through to the default action (safe: denied
-			// under a default-deny profile).
-			continue
+			// Unknown/unsupported/typo'd arch name: fail fast. Silently skipping it
+			// is dangerous — if EVERY declared arch is unrecognized, zero arch
+			// blocks are emitted and the filter collapses to a bare RET
+			// defaultAction. Under a default-ALLOW profile that means the intended
+			// per-syscall denials silently vanish (the filter becomes inert). Refuse
+			// to install a filter that does not mean what the profile declares.
+			return nil, fmt.Errorf("seccomp: unrecognized architecture %q in profile", archName)
 		}
 
 		matchLabel := prog.newLabel()
@@ -249,6 +252,14 @@ func emitConditions(prog *program, args []seccompArg, onMatch, onFail label) err
 // failure to fail. The argument is loaded fresh here, so callers need not
 // preserve the accumulator.
 func emitCondition(prog *program, a seccompArg, pass, fail label) error {
+	// seccomp_data carries exactly args[0..5]. Reject a larger index BEFORE
+	// computing any offset: argOffsets does uint32 arithmetic (16 + 8*index), so a
+	// huge index would wrap around to a small, 4-aligned, in-bounds offset — the
+	// filter would then load and compare the WRONG args[] field while seccomp(2)
+	// still SUCCEEDS, silently changing the policy's meaning. Fail loudly instead.
+	if a.Index > 5 {
+		return fmt.Errorf("seccomp: arg index %d out of range (seccomp_data has args[0..5])", a.Index)
+	}
 	hiOff, loOff := argOffsets(a.Index)
 	hi := uint32(a.Value >> 32)
 	lo := uint32(a.Value)

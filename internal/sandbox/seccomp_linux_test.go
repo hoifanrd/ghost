@@ -154,3 +154,75 @@ func TestApplySeccompFromJSON_EmptyIsNoOp(t *testing.T) {
 		t.Fatalf("empty input should be a no-op, got: %v", err)
 	}
 }
+
+// TestBuildProgram_UnknownArchErrors guards defect fix #1: an unrecognized
+// architecture name must fail fast, not be silently skipped. Skipping is unsafe
+// because if every declared arch is unknown, zero arch blocks are emitted and the
+// filter degenerates to a bare RET defaultAction — a default-ALLOW profile then
+// installs an inert filter that silently drops all its intended denials.
+func TestBuildProgram_UnknownArchErrors(t *testing.T) {
+	// All-unknown: the dangerous case that would collapse to an empty filter.
+	onlyUnknown := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ALLOW",
+		Architectures: []string{"SCMP_ARCH_BOGUS"},
+		Syscalls:      []seccompSyscall{{Names: []string{"symlink"}, Action: "SCMP_ACT_ERRNO"}},
+	}
+	if _, err := buildProgram(onlyUnknown); err == nil {
+		t.Fatal("expected error for an unrecognized architecture, got nil (an empty/inert filter would be installed)")
+	}
+
+	// Mixed known+unknown: still fail fast — a typo must not slip through just
+	// because other arches are valid.
+	mixed := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ALLOW",
+		Architectures: []string{"SCMP_ARCH_X86_64", "SCMP_ARCH_TYPO"},
+		Syscalls:      []seccompSyscall{{Names: []string{"symlink"}, Action: "SCMP_ACT_ERRNO"}},
+	}
+	if _, err := buildProgram(mixed); err == nil {
+		t.Fatal("expected error when any declared architecture is unrecognized, got nil")
+	}
+
+	// Sanity: the same profile with only recognized arches must still build.
+	ok := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ALLOW",
+		Architectures: []string{"SCMP_ARCH_X86_64"},
+		Syscalls:      []seccompSyscall{{Names: []string{"symlink"}, Action: "SCMP_ACT_ERRNO"}},
+	}
+	if _, err := buildProgram(ok); err != nil {
+		t.Fatalf("a profile with only recognized arches must build, got: %v", err)
+	}
+}
+
+// TestBuildProgram_ArgIndexOutOfRangeErrors guards defect fix #2: an argument
+// index beyond args[5] must be rejected. Left unchecked, argOffsets' uint32
+// arithmetic (16 + 8*index) can wrap a huge index back to a small in-bounds
+// offset, so seccomp(2) would SUCCEED while the filter compares the wrong
+// argument — a silent policy change.
+func TestBuildProgram_ArgIndexOutOfRangeErrors(t *testing.T) {
+	profile := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ERRNO",
+		Architectures: []string{"SCMP_ARCH_X86_64"},
+		Syscalls: []seccompSyscall{
+			{Names: []string{"clone"}, Action: "SCMP_ACT_ALLOW", Args: []seccompArg{
+				{Index: 6, Value: 0, Op: "SCMP_CMP_EQ"},
+			}},
+		},
+	}
+	if _, err := buildProgram(profile); err == nil {
+		t.Fatal("expected error for arg index 6 (seccomp_data has only args[0..5]), got nil")
+	}
+
+	// The overflow-wrap case: 8*index wraps uint32 back to a small offset.
+	wrap := &seccompProfile{
+		DefaultAction: "SCMP_ACT_ERRNO",
+		Architectures: []string{"SCMP_ARCH_X86_64"},
+		Syscalls: []seccompSyscall{
+			{Names: []string{"clone"}, Action: "SCMP_ACT_ALLOW", Args: []seccompArg{
+				{Index: 0x20000000, Value: 0, Op: "SCMP_CMP_EQ"},
+			}},
+		},
+	}
+	if _, err := buildProgram(wrap); err == nil {
+		t.Fatal("expected error for an out-of-range arg index that overflows the offset computation, got nil")
+	}
+}
