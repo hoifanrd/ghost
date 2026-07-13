@@ -186,30 +186,12 @@ ci: clean check security test-coverage test-integration
     @echo "CI pipeline completed successfully!"
 
 # Development setup
-setup: install-deps
+setup:
     go mod download
     @echo "Installing development tools..."
     go install honnef.co/go/tools/cmd/staticcheck@latest || true
     go install github.com/securego/gosec/v2/cmd/gosec@latest || true
     @echo "Development environment ready!"
-
-# Install native build dependencies (libseccomp for cgo)
-install-deps:
-    @echo "Installing native build dependencies (libseccomp)..."
-    @bash -c 'set -e; \
-        if command -v apt-get > /dev/null 2>&1; then \
-            sudo apt-get update && sudo apt-get install -y libseccomp-dev; \
-        elif command -v dnf > /dev/null 2>&1; then \
-            sudo dnf install -y libseccomp-devel; \
-        elif command -v pacman > /dev/null 2>&1; then \
-            sudo pacman -S --needed --noconfirm libseccomp; \
-        elif command -v apk > /dev/null 2>&1; then \
-            sudo apk add libseccomp-dev; \
-        elif command -v brew > /dev/null 2>&1; then \
-            echo "macOS detected: seccomp is Linux-only, skipping (builds are no-ops there)."; \
-        else \
-            echo "No supported package manager found. Install libseccomp-dev manually for cgo builds."; \
-        fi'
 
 # Quick test - run fast tests only
 test-quick:

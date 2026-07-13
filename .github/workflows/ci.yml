@@ -13,9 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install libseccomp (CGO dependency)
-        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -52,9 +49,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install libseccomp (CGO dependency)
-        run: sudo apt-get update && sudo apt-get install -y libseccomp-dev
 
       - name: Setup Go
         uses: actions/setup-go@v5
