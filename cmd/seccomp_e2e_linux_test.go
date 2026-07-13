@@ -95,6 +95,11 @@ func buildGhostBin(t *testing.T) string {
 		// build -o <out> .` from the module root instead).
 		cmd := exec.Command("go", "build", "-o", ghostBinPath, ".")
 		cmd.Dir = repoRoot(t)
+		// Build with CGO disabled so the e2e test actually exercises the
+		// static/no-cgo guarantee the seccomp implementation claims. Without an
+		// explicit CGO_ENABLED, `go build` inherits the ambient setting (usually
+		// 1), which would not verify the pure-Go path.
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			ghostBinErr = err
